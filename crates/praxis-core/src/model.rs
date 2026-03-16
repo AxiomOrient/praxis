@@ -1,0 +1,540 @@
+use serde::{Deserialize, Serialize};
+
+// ─── Runtime agents ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum Agent {
+    Codex,
+    Claude,
+    Gemini,
+}
+
+impl Agent {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Gemini => "gemini",
+        }
+    }
+}
+
+// ─── Scope ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum Scope {
+    Repo,
+    User,
+}
+
+// ─── Target profiles ──────────────────────────────────────────────────────────
+
+/// Explicit runtime mapping policy (specs/04-RUNTIME-TARGET-PROFILES.md).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum TargetProfile {
+    CodexOpenStandard,
+    ClaudeNative,
+    GeminiNative,
+    CodexGeminiSharedOpenStandard,
+    #[default]
+    MultiRuntimeDefault,
+}
+
+// ─── Agent file slots ─────────────────────────────────────────────────────────
+
+/// Canonical agent file slot identifiers (specs/03-SPEC.md §11.2).
+///
+/// Each slot maps to a concrete filesystem path determined by workspace scope.
+/// Slot IDs are stable and used as managed-block identifiers in rendered files.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentFileSlot {
+    // Codex
+    CodexUserRoot,        // ~/.codex/AGENTS.md
+    CodexUserOverride,    // ~/.codex/AGENTS.override.md
+    CodexProjectRoot,     // $REPO/AGENTS.md
+    CodexProjectOverride, // $REPO/AGENTS.override.md
+    // Claude Code
+    ClaudeUserRoot,    // ~/.claude/CLAUDE.md
+    ClaudeProjectRoot, // $REPO/CLAUDE.md
+    ClaudeProjectDot,  // $REPO/.claude/CLAUDE.md
+    // Gemini CLI
+    GeminiUserRoot,    // ~/.gemini/GEMINI.md
+    GeminiProjectRoot, // $REPO/GEMINI.md
+}
+
+impl AgentFileSlot {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CodexUserRoot => "codex-user-root",
+            Self::CodexUserOverride => "codex-user-override",
+            Self::CodexProjectRoot => "codex-project-root",
+            Self::CodexProjectOverride => "codex-project-override",
+            Self::ClaudeUserRoot => "claude-user-root",
+            Self::ClaudeProjectRoot => "claude-project-root",
+            Self::ClaudeProjectDot => "claude-project-dot",
+            Self::GeminiUserRoot => "gemini-user-root",
+            Self::GeminiProjectRoot => "gemini-project-root",
+        }
+    }
+
+    pub fn is_project_scoped(&self) -> bool {
+        matches!(
+            self,
+            Self::CodexProjectRoot
+                | Self::CodexProjectOverride
+                | Self::ClaudeProjectRoot
+                | Self::ClaudeProjectDot
+                | Self::GeminiProjectRoot
+        )
+    }
+
+    pub fn is_user_scoped(&self) -> bool {
+        !self.is_project_scoped()
+    }
+}
+
+// ─── Agent file template ──────────────────────────────────────────────────────
+
+/// Origin of an agent file template (spec §4.1.6).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentFileTemplateOrigin {
+    Declared,
+    Discovered,
+    Recipe,
+    Draft,
+}
+
+/// Reusable agent instruction template discovered in a source (spec §4.1.6).
+/// Replaces the old `GuideAsset` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentFileTemplate {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub relative_path: String,
+    /// Target slots this template contributes content to.
+    pub slots: Vec<AgentFileSlot>,
+    /// Composition priority; lower values render first. Default 100.
+    /// Reserve lower bands for higher-precedence/system-owned templates.
+    pub priority: u32,
+    pub origin: AgentFileTemplateOrigin,
+}
+
+// ─── Source ref ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SourceRef {
+    Github {
+        owner: String,
+        repo: String,
+        reference: Option<String>,
+        subdir: Option<String>,
+    },
+    Local {
+        path: String,
+    },
+}
+
+// ─── Workspace settings ───────────────────────────────────────────────────────
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSettings {
+    #[serde(default)]
+    pub target_profile: TargetProfile,
+    /// Write AGENT.md as a Codex alias. Default true.
+    #[serde(default = "default_true", alias = "write_agent_md_alias")]
+    pub write_codex_agent_alias: bool,
+}
+
+impl Default for WorkspaceSettings {
+    fn default() -> Self {
+        Self {
+            target_profile: TargetProfile::default(),
+            write_codex_agent_alias: true,
+        }
+    }
+}
+
+// ─── Install selection ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InstallSelection {
+    pub all: bool,
+    pub decks: Vec<String>,
+    pub skills: Vec<String>,
+    pub exclude_skills: Vec<String>,
+    /// Agent file template IDs from the source catalog.
+    #[serde(default, alias = "guides")]
+    pub agent_file_templates: Vec<String>,
+}
+
+// ─── Source install ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceInstall {
+    pub id: String,
+    pub source: SourceRef,
+    pub targets: Vec<Agent>,
+    pub selection: InstallSelection,
+}
+
+// ─── Workspace manifest ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceManifest {
+    pub version: u32,
+    pub settings: WorkspaceSettings,
+    pub installs: Vec<SourceInstall>,
+}
+
+impl Default for WorkspaceManifest {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            settings: WorkspaceSettings::default(),
+            installs: Vec::new(),
+        }
+    }
+}
+
+// ─── Catalog types ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeckInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub skills: Vec<String>,
+    pub synthesized: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    pub relative_path: String,
+    pub root_component: String,
+    pub display_name: Option<String>,
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecipeBundle {
+    pub id: String,
+    pub relative_path: String,
+    pub target_name: String,
+    pub agents: Vec<Agent>,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecipeHint {
+    pub key: String,
+    pub label: String,
+    pub description: String,
+    pub bundles: Vec<RecipeBundle>,
+    pub notes: Vec<String>,
+    /// Template IDs recommended by this recipe.
+    pub recommended_agent_file_templates: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceCatalog {
+    pub source_id: String,
+    pub label: String,
+    pub source: SourceRef,
+    pub checkout_root: String,
+    pub resolved_reference: Option<String>,
+    pub source_hash: String,
+    pub decks: Vec<DeckInfo>,
+    pub skills: Vec<SkillInfo>,
+    /// Agent file templates discovered in this source.
+    pub agent_file_templates: Vec<AgentFileTemplate>,
+    pub recipe: Option<RecipeHint>,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+// ─── Applied (lock) types ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppliedSkill {
+    pub name: String,
+    pub agent: Agent,
+    pub source_relative_path: String,
+    pub target_path: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppliedBundle {
+    pub id: String,
+    pub agent: Agent,
+    pub source_relative_path: String,
+    pub target_path: String,
+    pub content_hash: String,
+}
+
+/// A managed agent file block written to a slot during apply.
+/// Replaces the old `AppliedGuide` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppliedAgentFileAction {
+    pub template_id: String,
+    pub slot: AgentFileSlot,
+    pub target_path: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppliedInstall {
+    pub source_id: String,
+    pub source_hash: String,
+    pub resolved_reference: Option<String>,
+    pub skills: Vec<AppliedSkill>,
+    pub bundles: Vec<AppliedBundle>,
+    pub agent_file_actions: Vec<AppliedAgentFileAction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceLock {
+    pub version: u32,
+    pub generated_at: String,
+    pub installs: Vec<AppliedInstall>,
+}
+
+impl Default for WorkspaceLock {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            generated_at: String::new(),
+            installs: Vec::new(),
+        }
+    }
+}
+
+// ─── Target paths ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TargetPaths {
+    pub codex_skills: String,
+    pub claude_skills: String,
+    pub gemini_skills: String,
+    pub codex_agents: String,
+    pub codex_override: String,
+    pub codex_agent_alias: String,
+    pub claude_root: String,
+    pub claude_dot: String,
+    pub gemini_project_root: String,
+}
+
+// ─── Workspace snapshot ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSnapshot {
+    pub manifest: WorkspaceManifest,
+    pub lock: WorkspaceLock,
+    pub targets: TargetPaths,
+    pub warnings: Vec<String>,
+}
+
+// ─── Agent file state ─────────────────────────────────────────────────────────
+
+/// One block contributed by a managed source to an agent file.
+/// Replaces the old `ManagedGuideBlock` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedAgentFileBlock {
+    pub source_id: String,
+    pub template_id: String,
+    pub slot: AgentFileSlot,
+    pub content_hash: String,
+}
+
+/// Live state of one agent file slot.
+/// Replaces the old `GuideState` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentFileState {
+    pub slot: AgentFileSlot,
+    pub target_path: String,
+    pub exists: bool,
+    pub user_content: String,
+    pub managed_blocks: Vec<ManagedAgentFileBlock>,
+    pub effective_content: String,
+}
+
+/// Snapshot of all managed agent file slots.
+/// Replaces the old `GuidanceSnapshot` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentFileSnapshot {
+    pub slots: Vec<AgentFileState>,
+}
+
+// ─── Doctor ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DoctorCheck {
+    pub level: String,
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DoctorReport {
+    pub ok: bool,
+    pub checks: Vec<DoctorCheck>,
+}
+
+// ─── Request types ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub source: String,
+    pub all: bool,
+    pub decks: Vec<String>,
+    pub skills: Vec<String>,
+    pub exclude_skills: Vec<String>,
+    pub agent_file_templates: Vec<String>,
+    pub targets: Vec<Agent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoveRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub source: String,
+    pub decks: Vec<String>,
+    pub skills: Vec<String>,
+    pub agent_file_templates: Vec<String>,
+    pub remove_all: bool,
+}
+
+/// Write user-authored content to an agent file slot.
+/// Replaces the old `GuidanceWriteRequest` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentFileWriteRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub slot: AgentFileSlot,
+    pub content: String,
+}
+
+// ─── Plan types ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannedSkill {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub category: Option<String>,
+    pub agent: Agent,
+    pub source_relative_path: String,
+    pub target_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannedBundle {
+    pub id: String,
+    pub description: String,
+    pub agent: Agent,
+    pub source_relative_path: String,
+    pub target_path: String,
+}
+
+/// A planned write action to an agent file slot.
+/// Replaces the old `PlannedGuide` type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannedAgentFileAction {
+    pub template_id: String,
+    pub title: String,
+    pub slot: AgentFileSlot,
+    pub source_relative_path: String,
+    pub target_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlanSummary {
+    pub total_skills: usize,
+    pub total_agent_file_actions: usize,
+    pub total_bundles: usize,
+    pub codex_skills: usize,
+    pub claude_skills: usize,
+    pub gemini_skills: usize,
+    pub codex_bundles: usize,
+    pub claude_bundles: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallPlan {
+    pub source_id: String,
+    pub label: String,
+    pub resolved_reference: Option<String>,
+    pub source_hash: String,
+    pub targets: Vec<Agent>,
+    pub selection: InstallSelection,
+    pub target_paths: TargetPaths,
+    pub skills: Vec<PlannedSkill>,
+    pub bundles: Vec<PlannedBundle>,
+    pub agent_file_actions: Vec<PlannedAgentFileAction>,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+    pub conflicts: Vec<String>,
+    pub summary: PlanSummary,
+}
+
+// ─── Library surface types (spec §4.1.14) ─────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LibraryArtifactKind {
+    Skill,
+    Deck,
+    AgentFileTemplate,
+    Draft,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LibraryOrigin {
+    Source,
+    Imported,
+    Draft,
+    Recipe,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PresenceState {
+    Available,
+    Installed,
+    Draft,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LibraryStatusFlag {
+    Augmented,
+    Benchmarked,
+    Outdated,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryEntry {
+    pub artifact_kind: LibraryArtifactKind,
+    pub artifact_id: String,
+    pub source_id: Option<String>,
+    pub origin: LibraryOrigin,
+    pub presence_state: PresenceState,
+    pub status_flags: Vec<LibraryStatusFlag>,
+}

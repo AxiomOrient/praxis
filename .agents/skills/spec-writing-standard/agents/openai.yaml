@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spec Writing Standard"
+  short_description: "Write AI-facing specs with explicit contracts and execution rules"
+  default_prompt: "Use $spec-writing-standard to write or upgrade a repository specification."

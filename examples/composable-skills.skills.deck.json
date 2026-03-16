@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "decks": [
+    {
+      "id": "atomic-build",
+      "name": "Atomic Build",
+      "description": "Small building-block skills for direct implementation work.",
+      "skills": [
+        "build-implement-minimal-diff",
+        "debug-find-root-cause",
+        "review-check-changed-files",
+        "test-run-targeted"
+      ]
+    },
+    {
+      "id": "workflow",
+      "name": "Workflow",
+      "description": "Discovery-first workflow entry points.",
+      "skills": [
+        "workflow-build-implement-and-guard",
+        "workflow-debug-and-fix",
+        "workflow-review-and-guard"
+      ]
+    },
+    {
+      "id": "docs-release",
+      "name": "Docs & Release",
+      "description": "Documentation and release-oriented skills.",
+      "skills": [
+        "doc-write-structured",
+        "release-publish",
+        "workflow-release-and-publish"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+version = 1
+
+[settings]
+default_agents = ["codex", "claude"]
+write_agent_md_alias = true
+claude_project_guide_location = "root"
+
+[[installs]]
+id = "github:AxiomOrient/composable-skills@default#root"
+targets = ["codex"]
+
+[installs.source]
+kind = "github"
+owner = "AxiomOrient"
+repo = "composable-skills"
+
+[installs.selection]
+all = false
+decks = ["workflow", "debug", "build"]
+skills = []
+exclude_skills = ["gemini"]
+guides = ["codex"]
+
+[[installs]]
+id = "github:garrytan/gstack@default#root"
+targets = ["claude"]
+
+[installs.source]
+kind = "github"
+owner = "garrytan"
+repo = "gstack"
+
+[installs.selection]
+all = false
+decks = ["workflow"]
+skills = ["browse"]
+exclude_skills = []
+guides = ["claude-root"]

@@ -1,0 +1,22 @@
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Workspace-local runtime state
+.praxis/
+
+# Rust build outputs
+/target/
+**/target/
+
+# Node/web build outputs
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Tauri/log artifacts
+**/src-tauri/gen/
+*.log

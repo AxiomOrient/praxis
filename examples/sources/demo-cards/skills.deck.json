@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "decks": [
+    {
+      "id": "core",
+      "name": "Core",
+      "description": "Small daily deck for planning, debugging, and shipping.",
+      "skills": ["plan-cleanly", "debug-root-cause", "ship-checklist"]
+    },
+    {
+      "id": "workflow",
+      "name": "Workflow",
+      "description": "Higher-level workflow deck.",
+      "skills": ["workflow-build-release"]
+    }
+  ]
+}

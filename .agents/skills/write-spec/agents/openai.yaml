@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Spec"
+  short_description: "Generate contract-style product or system specs"
+  default_prompt: "Use $write-spec to draft a specification for this project."
