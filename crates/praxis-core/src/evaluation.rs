@@ -5,9 +5,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 
 use crate::library::{ensure_library_store, sync_catalog_to_library};
-use crate::model::{
-    BenchmarkRunSummary, BenchmarkSuiteSummary, EvaluationSnapshot, SourceCatalog,
-};
+use crate::model::{BenchmarkRunSummary, BenchmarkSuiteSummary, EvaluationSnapshot, SourceCatalog};
 use crate::workspace::WorkspacePaths;
 
 pub fn ensure_evaluation_store(paths: &WorkspacePaths) -> Result<()> {
@@ -47,7 +45,7 @@ pub fn read_evaluation_snapshot(paths: &WorkspacePaths) -> Result<EvaluationSnap
         .prepare(
             "SELECT run_id, suite_id, candidate_source_id, baseline_source_id, status,
                     mode, recommendation, score, summary, reviewer_note, review_decision,
-                    created_at, finished_at
+                    job_id, evidence_path, created_at, finished_at
              FROM benchmark_runs
              ORDER BY created_at DESC
              LIMIT 10",
@@ -67,15 +65,20 @@ pub fn read_evaluation_snapshot(paths: &WorkspacePaths) -> Result<EvaluationSnap
                 summary: row.get(8)?,
                 reviewer_note: row.get(9)?,
                 review_decision: row.get(10)?,
-                created_at: row.get(11)?,
-                finished_at: row.get(12)?,
+                job_id: row.get(11)?,
+                evidence_path: row.get(12)?,
+                created_at: row.get(13)?,
+                finished_at: row.get(14)?,
             })
         })
         .context("query benchmark runs")?
         .collect::<rusqlite::Result<Vec<_>>>()
         .context("collect benchmark runs")?;
 
-    Ok(EvaluationSnapshot { suites, recent_runs })
+    Ok(EvaluationSnapshot {
+        suites,
+        recent_runs,
+    })
 }
 
 pub fn run_benchmark(
@@ -131,28 +134,27 @@ pub fn run_benchmark(
         Option<String>,
         Option<String>,
         String,
-    ) =
-        if mode == "human-review" {
-            (
-                "awaiting_human".to_string(),
-                "manual_review".to_string(),
-                0.0,
-                String::new(),
-                None,
-                None,
-                format!("{summary}. Awaiting human review decision."),
-            )
-        } else {
-            (
-                "succeeded".to_string(),
-                recommendation.to_string(),
-                score,
-                created_at.clone(),
-                None,
-                None,
-                summary,
-            )
-        };
+    ) = if mode == "human-review" {
+        (
+            "awaiting_human".to_string(),
+            "manual_review".to_string(),
+            0.0,
+            String::new(),
+            None,
+            None,
+            format!("{summary}. Awaiting human review decision."),
+        )
+    } else {
+        (
+            "succeeded".to_string(),
+            recommendation.to_string(),
+            score,
+            created_at.clone(),
+            None,
+            None,
+            summary,
+        )
+    };
 
     tx.execute(
         "INSERT INTO benchmark_runs (
@@ -167,9 +169,11 @@ pub fn run_benchmark(
             summary,
             reviewer_note,
             review_decision,
+            job_id,
+            evidence_path,
             created_at,
             finished_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             &run_id,
             suite_id,
@@ -182,6 +186,8 @@ pub fn run_benchmark(
             &summary,
             reviewer_note,
             review_decision,
+            Option::<String>::None,
+            Option::<String>::None,
             &created_at,
             &finished_at,
         ],
@@ -194,6 +200,7 @@ pub fn run_benchmark(
         suite_id: suite_id.to_string(),
         candidate_source_id: catalog.source_id.clone(),
         baseline_source_id: baseline_source_id.map(ToOwned::to_owned),
+        job_id: None,
         mode: mode.to_string(),
         status,
         recommendation,
@@ -201,6 +208,7 @@ pub fn run_benchmark(
         summary,
         reviewer_note: None,
         review_decision: None,
+        evidence_path: None,
         created_at,
         finished_at,
     })
@@ -307,6 +315,7 @@ pub fn submit_human_review(
         suite_id,
         candidate_source_id,
         baseline_source_id,
+        job_id: None,
         mode,
         status: "succeeded".to_string(),
         recommendation: normalized_decision.to_string(),
@@ -318,9 +327,164 @@ pub fn submit_human_review(
             Some(note.trim().to_string())
         },
         review_decision: Some(normalized_decision.to_string()),
+        evidence_path: None,
         created_at,
         finished_at,
     })
+}
+
+pub fn read_benchmark_run(paths: &WorkspacePaths, run_id: &str) -> Result<BenchmarkRunSummary> {
+    ensure_evaluation_store(paths)?;
+    let conn = open_connection(paths)?;
+    conn.query_row(
+        "SELECT run_id, suite_id, candidate_source_id, baseline_source_id, status, mode,
+                recommendation, score, summary, reviewer_note, review_decision, job_id,
+                evidence_path, created_at, finished_at
+         FROM benchmark_runs
+         WHERE run_id = ?1",
+        params![run_id],
+        |row| {
+            Ok(BenchmarkRunSummary {
+                id: row.get(0)?,
+                suite_id: row.get(1)?,
+                candidate_source_id: row.get(2)?,
+                baseline_source_id: row.get(3)?,
+                status: row.get(4)?,
+                mode: row.get(5)?,
+                recommendation: row.get(6)?,
+                score: row.get(7)?,
+                summary: row.get(8)?,
+                reviewer_note: row.get(9)?,
+                review_decision: row.get(10)?,
+                job_id: row.get(11)?,
+                evidence_path: row.get(12)?,
+                created_at: row.get(13)?,
+                finished_at: row.get(14)?,
+            })
+        },
+    )
+    .map_err(|_| anyhow!("benchmark run '{}' not found", run_id))
+}
+
+pub fn queue_benchmark_run(
+    paths: &WorkspacePaths,
+    suite_id: &str,
+    candidate_source_id: &str,
+    baseline_source_id: Option<&str>,
+    mode: &str,
+    job_id: &str,
+    summary: &str,
+) -> Result<BenchmarkRunSummary> {
+    ensure_evaluation_store(paths)?;
+    let conn = open_connection(paths)?;
+    let created_at = Utc::now().to_rfc3339();
+    let run_id = benchmark_run_id(suite_id, candidate_source_id, &created_at);
+    conn.execute(
+        "INSERT INTO benchmark_runs (
+            run_id,
+            suite_id,
+            candidate_source_id,
+            baseline_source_id,
+            status,
+            mode,
+            recommendation,
+            score,
+            summary,
+            reviewer_note,
+            review_decision,
+            job_id,
+            evidence_path,
+            created_at,
+            finished_at
+        ) VALUES (?1, ?2, ?3, ?4, 'queued', ?5, 'manual_review', 0.0, ?6, NULL, NULL, ?7, NULL, ?8, '')",
+        params![&run_id, suite_id, candidate_source_id, baseline_source_id, mode, summary, job_id, &created_at],
+    )
+    .context("insert queued benchmark run")?;
+
+    read_benchmark_run(paths, &run_id)
+}
+
+pub fn attach_job_to_benchmark_run(
+    paths: &WorkspacePaths,
+    run_id: &str,
+    job_id: &str,
+) -> Result<()> {
+    ensure_evaluation_store(paths)?;
+    let conn = open_connection(paths)?;
+    conn.execute(
+        "UPDATE benchmark_runs SET job_id = ?2 WHERE run_id = ?1",
+        params![run_id, job_id],
+    )
+    .with_context(|| format!("attach job '{job_id}' to benchmark run '{run_id}'"))?;
+    Ok(())
+}
+
+pub fn mark_benchmark_run_running(paths: &WorkspacePaths, run_id: &str) -> Result<()> {
+    ensure_evaluation_store(paths)?;
+    let conn = open_connection(paths)?;
+    conn.execute(
+        "UPDATE benchmark_runs SET status = 'running' WHERE run_id = ?1",
+        params![run_id],
+    )
+    .with_context(|| format!("mark benchmark run '{run_id}' running"))?;
+    Ok(())
+}
+
+pub fn complete_ai_benchmark_run(
+    paths: &WorkspacePaths,
+    run_id: &str,
+    recommendation: &str,
+    score: f64,
+    summary: &str,
+    evidence_path: Option<&str>,
+) -> Result<BenchmarkRunSummary> {
+    ensure_evaluation_store(paths)?;
+    let conn = open_connection(paths)?;
+    let finished_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE benchmark_runs
+         SET status = 'succeeded',
+             recommendation = ?2,
+             score = ?3,
+             summary = ?4,
+             evidence_path = ?5,
+             finished_at = ?6
+         WHERE run_id = ?1",
+        params![
+            run_id,
+            recommendation,
+            score,
+            summary,
+            evidence_path,
+            &finished_at
+        ],
+    )
+    .with_context(|| format!("complete ai benchmark run '{run_id}'"))?;
+    read_benchmark_run(paths, run_id)
+}
+
+pub fn fail_benchmark_run(
+    paths: &WorkspacePaths,
+    run_id: &str,
+    summary: &str,
+    evidence_path: Option<&str>,
+) -> Result<BenchmarkRunSummary> {
+    ensure_evaluation_store(paths)?;
+    let conn = open_connection(paths)?;
+    let finished_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE benchmark_runs
+         SET status = 'failed',
+             recommendation = 'manual_review',
+             score = 0.0,
+             summary = ?2,
+             evidence_path = ?3,
+             finished_at = ?4
+         WHERE run_id = ?1",
+        params![run_id, summary, evidence_path, &finished_at],
+    )
+    .with_context(|| format!("fail benchmark run '{run_id}'"))?;
+    read_benchmark_run(paths, run_id)
 }
 
 fn open_connection(paths: &WorkspacePaths) -> Result<Connection> {
@@ -357,6 +521,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             summary TEXT NOT NULL,
             reviewer_note TEXT,
             review_decision TEXT,
+            job_id TEXT,
+            evidence_path TEXT,
             created_at TEXT NOT NULL,
             finished_at TEXT NOT NULL
         );
@@ -366,9 +532,16 @@ fn init_schema(conn: &Connection) -> Result<()> {
         ",
     )
     .context("initialize evaluation schema")?;
-    ensure_column(conn, "benchmark_runs", "mode", "TEXT NOT NULL DEFAULT 'deterministic'")?;
+    ensure_column(
+        conn,
+        "benchmark_runs",
+        "mode",
+        "TEXT NOT NULL DEFAULT 'deterministic'",
+    )?;
     ensure_column(conn, "benchmark_runs", "reviewer_note", "TEXT")?;
     ensure_column(conn, "benchmark_runs", "review_decision", "TEXT")?;
+    ensure_column(conn, "benchmark_runs", "job_id", "TEXT")?;
+    ensure_column(conn, "benchmark_runs", "evidence_path", "TEXT")?;
     Ok(())
 }
 
@@ -447,11 +620,11 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 mod tests {
     use super::*;
     use crate::model::{
-        AgentFileTemplate, AgentFileTemplateOrigin, AgentFileSlot, DeckInfo, SkillInfo, SourceRef,
+        AgentFileSlot, AgentFileTemplate, AgentFileTemplateOrigin, DeckInfo, SkillInfo, SourceRef,
     };
     use crate::workspace::{ensure_workspace, WorkspacePaths};
-    use tempfile::tempdir;
     use std::path::Path;
+    use tempfile::tempdir;
 
     fn sample_paths(root: &Path) -> WorkspacePaths {
         let state_dir = root.join(".praxis");
@@ -459,6 +632,7 @@ mod tests {
             scope: crate::model::Scope::Repo,
             repo_root: Some(root.to_path_buf()),
             state_dir: state_dir.clone(),
+            jobs_dir: state_dir.join("jobs"),
             db_dir: state_dir.join("db"),
             library_dir: state_dir.join("library"),
             library_db_path: state_dir.join("db").join("praxis.db"),
@@ -490,7 +664,11 @@ mod tests {
     fn sample_catalog(root: &Path) -> SourceCatalog {
         let checkout_root = root.join("fixture");
         fs::create_dir_all(checkout_root.join("demo-skill")).expect("skill dir");
-        fs::write(checkout_root.join("demo-skill").join("SKILL.md"), "# Demo\n").expect("skill");
+        fs::write(
+            checkout_root.join("demo-skill").join("SKILL.md"),
+            "# Demo\n",
+        )
+        .expect("skill");
         fs::write(checkout_root.join("AGENTS.md"), "System instructions\n").expect("agent file");
 
         SourceCatalog {
@@ -559,8 +737,14 @@ mod tests {
 
         ensure_workspace(&paths).expect("ensure workspace");
         let catalog = sample_catalog(&repo_root);
-        let run =
-            run_benchmark(&paths, "runtime-conformance", &catalog, None, "deterministic").expect("run benchmark");
+        let run = run_benchmark(
+            &paths,
+            "runtime-conformance",
+            &catalog,
+            None,
+            "deterministic",
+        )
+        .expect("run benchmark");
         let snapshot = read_evaluation_snapshot(&paths).expect("evaluation snapshot");
 
         assert_eq!(run.recommendation, "promote");
@@ -577,12 +761,18 @@ mod tests {
 
         ensure_workspace(&paths).expect("ensure workspace");
         let catalog = sample_catalog(&repo_root);
-        let run =
-            run_benchmark(&paths, "runtime-conformance", &catalog, None, "human-review").expect("run benchmark");
+        let run = run_benchmark(
+            &paths,
+            "runtime-conformance",
+            &catalog,
+            None,
+            "human-review",
+        )
+        .expect("run benchmark");
         assert_eq!(run.status, "awaiting_human");
 
-        let resolved =
-            submit_human_review(&paths, &run.id, "promote", "Looks production ready").expect("submit review");
+        let resolved = submit_human_review(&paths, &run.id, "promote", "Looks production ready")
+            .expect("submit review");
         assert_eq!(resolved.status, "succeeded");
         assert_eq!(resolved.recommendation, "promote");
         assert_eq!(resolved.review_decision.as_deref(), Some("promote"));

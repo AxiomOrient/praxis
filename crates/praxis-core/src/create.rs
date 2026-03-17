@@ -6,7 +6,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::library::ensure_library_store;
-use crate::model::{CreateSnapshot, DraftDocument, DraftPreview, DraftSummary, PreviewTreeEntry, SourceCatalog};
+use crate::model::{
+    CreateSnapshot, DraftDocument, DraftLineage, DraftPreview, DraftSummary, PreviewTreeEntry,
+    PromotionReviewSummary, SourceCatalog,
+};
+use crate::source::hash_directory;
 use crate::workspace::WorkspacePaths;
 
 pub fn ensure_create_store(paths: &WorkspacePaths) -> Result<()> {
@@ -23,7 +27,9 @@ pub fn read_create_snapshot(paths: &WorkspacePaths) -> Result<CreateSnapshot> {
     let conn = open_connection(paths)?;
     let mut stmt = conn
         .prepare(
-            "SELECT draft_id, name, artifact_kind, version_id, preset, created_at, updated_at
+            "SELECT draft_id, name, artifact_kind, version_id, preset, created_at, updated_at,
+                    origin_kind, source_id, parent_version_id, parent_name, augmentation_prompt,
+                    promotion_path, promoted_at
              FROM drafts
              ORDER BY updated_at DESC",
         )
@@ -36,6 +42,15 @@ pub fn read_create_snapshot(paths: &WorkspacePaths) -> Result<CreateSnapshot> {
                 artifact_kind: row.get(2)?,
                 version_id: row.get(3)?,
                 preset: row.get(4)?,
+                lineage: DraftLineage {
+                    origin_kind: row.get(7)?,
+                    source_id: row.get(8)?,
+                    parent_version_id: row.get(9)?,
+                    parent_name: row.get(10)?,
+                    augmentation_prompt: row.get(11)?,
+                    promotion_path: row.get(12)?,
+                    promoted_at: row.get(13)?,
+                },
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
             })
@@ -57,10 +72,15 @@ pub fn create_skill_draft(
 
     let sanitized_name = sanitize_name(name);
     if sanitized_name.is_empty() {
-        return Err(anyhow!("draft name must contain at least one ASCII letter or number"));
+        return Err(anyhow!(
+            "draft name must contain at least one ASCII letter or number"
+        ));
     }
     let now = Utc::now().to_rfc3339();
-    let draft_id = format!("draft_skill_{}", short_hash(&format!("{sanitized_name}:{now}")));
+    let draft_id = format!(
+        "draft_skill_{}",
+        short_hash(&format!("{sanitized_name}:{now}"))
+    );
     let version_id = format!("drv_{}", short_hash(&format!("{draft_id}:{now}")));
     let draft_dir = paths.library_drafts_dir.join(&draft_id).join(&version_id);
     fs::create_dir_all(&draft_dir)
@@ -95,8 +115,15 @@ pub fn create_skill_draft(
             description,
             draft_path,
             created_at,
-            updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+            updated_at,
+            origin_kind,
+            source_id,
+            parent_version_id,
+            parent_name,
+            augmentation_prompt,
+            promotion_path,
+            promoted_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'create', NULL, NULL, NULL, NULL, NULL, NULL)",
         params![
             &draft_id,
             &sanitized_name,
@@ -120,12 +147,14 @@ pub fn preview_draft(paths: &WorkspacePaths, draft_id: &str) -> Result<DraftPrev
     let files = collect_preview_entries(&draft_path, &draft_path)?;
     let documents = collect_documents(&draft_path, &draft_path)?;
     let promotion_target = promotion_target_path(paths, &draft.name, None)?;
+    let review = build_review_summary(&files);
 
     Ok(DraftPreview {
         draft,
         files,
         documents,
         promotion_target,
+        review,
     })
 }
 
@@ -139,7 +168,8 @@ pub fn promote_draft(
     let (draft, draft_path, _description) = load_draft_record(paths, draft_id)?;
 
     let source_dir = PathBuf::from(&draft_path);
-    let promotion_target = PathBuf::from(promotion_target_path(paths, &draft.name, destination_root)?);
+    let promotion_target =
+        PathBuf::from(promotion_target_path(paths, &draft.name, destination_root)?);
     if promotion_target.exists() {
         return Err(anyhow!(
             "promotion target already exists: {}",
@@ -150,19 +180,35 @@ pub fn promote_draft(
     copy_dir(&source_dir, &promotion_target)?;
     let updated_at = Utc::now().to_rfc3339();
     conn.execute(
-        "UPDATE drafts SET updated_at = ?2 WHERE draft_id = ?1",
-        params![draft_id, &updated_at],
+        "UPDATE drafts
+         SET updated_at = ?2,
+             promotion_path = ?3,
+             promoted_at = ?2
+         WHERE draft_id = ?1",
+        params![
+            draft_id,
+            &updated_at,
+            promotion_target.to_string_lossy().to_string()
+        ],
     )
     .context("update draft promotion timestamp")?;
+    let files = collect_preview_entries(&promotion_target, &promotion_target)?;
+    let documents = collect_documents(&promotion_target, &promotion_target)?;
 
     Ok(DraftPreview {
-        files: collect_preview_entries(&promotion_target, &promotion_target)?,
-        documents: collect_documents(&promotion_target, &promotion_target)?,
+        files: files.clone(),
+        documents,
         draft: DraftSummary {
+            lineage: DraftLineage {
+                promotion_path: Some(promotion_target.to_string_lossy().to_string()),
+                promoted_at: Some(updated_at.clone()),
+                ..draft.lineage
+            },
             updated_at,
             ..draft
         },
         promotion_target: promotion_target.to_string_lossy().to_string(),
+        review: build_review_summary(&files),
     })
 }
 
@@ -199,22 +245,37 @@ pub fn fork_skill_draft(
         .skills
         .iter()
         .find(|skill| skill.name == skill_name)
-        .ok_or_else(|| anyhow!("skill '{}' not found in source {}", skill_name, catalog.source_id))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "skill '{}' not found in source {}",
+                skill_name,
+                catalog.source_id
+            )
+        })?;
     let name = draft_name.unwrap_or(skill.display_name.as_deref().unwrap_or(&skill.name));
     let description = description.unwrap_or(&skill.description);
     let sanitized_name = sanitize_name(name);
     if sanitized_name.is_empty() {
-        return Err(anyhow!("forked draft name must contain at least one ASCII letter or number"));
+        return Err(anyhow!(
+            "forked draft name must contain at least one ASCII letter or number"
+        ));
     }
 
     let now = Utc::now().to_rfc3339();
-    let draft_id = format!("draft_skill_{}", short_hash(&format!("fork:{sanitized_name}:{now}")));
+    let draft_id = format!(
+        "draft_skill_{}",
+        short_hash(&format!("fork:{sanitized_name}:{now}"))
+    );
     let version_id = format!(
         "drv_{}",
-        short_hash(&format!("{}:{}:{}", draft_id, catalog.source_hash, skill.name))
+        short_hash(&format!(
+            "{}:{}:{}",
+            draft_id, catalog.source_hash, skill.name
+        ))
     );
     let draft_dir = paths.library_drafts_dir.join(&draft_id).join(&version_id);
     let source_dir = PathBuf::from(&catalog.checkout_root).join(&skill.relative_path);
+    let parent_version_id = format!("sv_{}", hash_directory(&source_dir)?);
     copy_dir(&source_dir, &draft_dir)?;
 
     let metadata = serde_json::json!({
@@ -242,8 +303,15 @@ pub fn fork_skill_draft(
             description,
             draft_path,
             created_at,
-            updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+            updated_at,
+            origin_kind,
+            source_id,
+            parent_version_id,
+            parent_name,
+            augmentation_prompt,
+            promotion_path,
+            promoted_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'fork', ?9, ?10, ?11, NULL, NULL, NULL)",
         params![
             &draft_id,
             &sanitized_name,
@@ -253,6 +321,9 @@ pub fn fork_skill_draft(
             description,
             draft_dir.to_string_lossy().to_string(),
             &now,
+            &catalog.source_id,
+            &parent_version_id,
+            &skill.name,
         ],
     )
     .context("insert fork draft record")?;
@@ -281,7 +352,14 @@ fn init_schema(conn: &Connection) -> Result<()> {
             description TEXT NOT NULL,
             draft_path TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            origin_kind TEXT NOT NULL DEFAULT 'create',
+            source_id TEXT,
+            parent_version_id TEXT,
+            parent_name TEXT,
+            augmentation_prompt TEXT,
+            promotion_path TEXT,
+            promoted_at TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_drafts_updated_at
@@ -289,13 +367,30 @@ fn init_schema(conn: &Connection) -> Result<()> {
         ",
     )
     .context("initialize create schema")?;
+    ensure_column(
+        conn,
+        "drafts",
+        "origin_kind",
+        "TEXT NOT NULL DEFAULT 'create'",
+    )?;
+    ensure_column(conn, "drafts", "source_id", "TEXT")?;
+    ensure_column(conn, "drafts", "parent_version_id", "TEXT")?;
+    ensure_column(conn, "drafts", "parent_name", "TEXT")?;
+    ensure_column(conn, "drafts", "augmentation_prompt", "TEXT")?;
+    ensure_column(conn, "drafts", "promotion_path", "TEXT")?;
+    ensure_column(conn, "drafts", "promoted_at", "TEXT")?;
     Ok(())
 }
 
-fn load_draft_record(paths: &WorkspacePaths, draft_id: &str) -> Result<(DraftSummary, String, String)> {
+fn load_draft_record(
+    paths: &WorkspacePaths,
+    draft_id: &str,
+) -> Result<(DraftSummary, String, String)> {
     let conn = open_connection(paths)?;
     conn.query_row(
-        "SELECT draft_id, name, artifact_kind, version_id, preset, created_at, updated_at, draft_path, description
+        "SELECT draft_id, name, artifact_kind, version_id, preset, created_at, updated_at,
+                draft_path, description, origin_kind, source_id, parent_version_id, parent_name,
+                augmentation_prompt, promotion_path, promoted_at
          FROM drafts
          WHERE draft_id = ?1",
         params![draft_id],
@@ -307,6 +402,15 @@ fn load_draft_record(paths: &WorkspacePaths, draft_id: &str) -> Result<(DraftSum
                     artifact_kind: row.get(2)?,
                     version_id: row.get(3)?,
                     preset: row.get(4)?,
+                    lineage: DraftLineage {
+                        origin_kind: row.get(9)?,
+                        source_id: row.get(10)?,
+                        parent_version_id: row.get(11)?,
+                        parent_name: row.get(12)?,
+                        augmentation_prompt: row.get(13)?,
+                        promotion_path: row.get(14)?,
+                        promoted_at: row.get(15)?,
+                    },
                     created_at: row.get(5)?,
                     updated_at: row.get(6)?,
                 },
@@ -316,6 +420,85 @@ fn load_draft_record(paths: &WorkspacePaths, draft_id: &str) -> Result<(DraftSum
         },
     )
     .map_err(|_| anyhow!("draft '{}' not found", draft_id))
+}
+
+pub fn augment_draft_with_response(
+    paths: &WorkspacePaths,
+    draft_id: &str,
+    prompt: &str,
+    response: &str,
+) -> Result<DraftPreview> {
+    ensure_create_store(paths)?;
+    let (draft, draft_path, description) = load_draft_record(paths, draft_id)?;
+    let source_dir = PathBuf::from(&draft_path);
+    let now = Utc::now().to_rfc3339();
+    let next_draft_id = format!(
+        "draft_skill_{}",
+        short_hash(&format!("augment:{}:{now}", draft.id))
+    );
+    let next_version_id = format!("drv_{}", short_hash(&format!("{}:{now}", draft.version_id)));
+    let next_dir = paths
+        .library_drafts_dir
+        .join(&next_draft_id)
+        .join(&next_version_id);
+    copy_dir(&source_dir, &next_dir)?;
+    fs::write(
+        next_dir.join("AUGMENTATION.md"),
+        format!(
+            "# Augmentation\n\n## Prompt\n\n{}\n\n## Proposal\n\n{}\n",
+            prompt.trim(),
+            response.trim()
+        ),
+    )
+    .with_context(|| {
+        format!(
+            "failed to write {}",
+            next_dir.join("AUGMENTATION.md").display()
+        )
+    })?;
+
+    let conn = open_connection(paths)?;
+    conn.execute(
+        "INSERT INTO drafts (
+            draft_id,
+            name,
+            artifact_kind,
+            version_id,
+            preset,
+            description,
+            draft_path,
+            created_at,
+            updated_at,
+            origin_kind,
+            source_id,
+            parent_version_id,
+            parent_name,
+            augmentation_prompt,
+            promotion_path,
+            promoted_at
+        ) VALUES (?1, ?2, ?3, ?4, 'augment', ?5, ?6, ?7, ?7, 'augment', ?8, ?9, ?10, ?11, NULL, NULL)",
+        params![
+            &next_draft_id,
+            &draft.name,
+            &draft.artifact_kind,
+            &next_version_id,
+            description,
+            next_dir.to_string_lossy().to_string(),
+            &now,
+            draft.lineage.source_id,
+            &draft.version_id,
+            draft.lineage.parent_name.or(Some(draft.name.clone())),
+            prompt.trim(),
+        ],
+    )
+    .context("insert augmented draft record")?;
+
+    preview_draft(paths, &next_draft_id)
+}
+
+pub fn draft_root_path(paths: &WorkspacePaths, draft_id: &str) -> Result<PathBuf> {
+    let (_draft, draft_path, _description) = load_draft_record(paths, draft_id)?;
+    Ok(PathBuf::from(draft_path))
 }
 
 fn touch_draft(paths: &WorkspacePaths, draft_id: &str) -> Result<()> {
@@ -401,7 +584,9 @@ fn promotion_target_path(
 
 fn copy_dir(source: &Path, target: &Path) -> Result<()> {
     fs::create_dir_all(target).with_context(|| format!("failed to create {}", target.display()))?;
-    for entry in fs::read_dir(source).with_context(|| format!("failed to list {}", source.display()))? {
+    for entry in
+        fs::read_dir(source).with_context(|| format!("failed to list {}", source.display()))?
+    {
         let entry = entry?;
         let source_path = entry.path();
         let target_path = target.join(entry.file_name());
@@ -458,6 +643,40 @@ fn short_hash(value: &str) -> String {
     digest[..16].to_string()
 }
 
+fn build_review_summary(files: &[PreviewTreeEntry]) -> PromotionReviewSummary {
+    PromotionReviewSummary {
+        changed_files: files
+            .iter()
+            .filter(|entry| entry.entry_kind == "file")
+            .count(),
+        latest_recommendation: None,
+        latest_run_status: None,
+        latest_run_summary: None,
+        pending_job_count: 0,
+    }
+}
+
+fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<()> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .with_context(|| format!("prepare table info for {table}"))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .with_context(|| format!("query columns for {table}"))?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .with_context(|| format!("collect columns for {table}"))?;
+
+    if !columns.iter().any(|existing| existing == column) {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+            [],
+        )
+        .with_context(|| format!("add column {table}.{column}"))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,6 +689,7 @@ mod tests {
             scope: crate::model::Scope::Repo,
             repo_root: Some(root.to_path_buf()),
             state_dir: state_dir.clone(),
+            jobs_dir: state_dir.join("jobs"),
             db_dir: state_dir.join("db"),
             library_dir: state_dir.join("library"),
             library_db_path: state_dir.join("db").join("praxis.db"),
@@ -506,13 +726,16 @@ mod tests {
         let paths = sample_paths(&repo_root);
 
         ensure_workspace(&paths).expect("ensure workspace");
-        let preview =
-            create_skill_draft(&paths, "Demo Draft", "A demo draft", "skill").expect("create draft");
+        let preview = create_skill_draft(&paths, "Demo Draft", "A demo draft", "skill")
+            .expect("create draft");
 
         assert_eq!(preview.draft.name, "demo-draft");
         assert!(preview.files.iter().any(|entry| entry.path == "SKILL.md"));
         assert!(preview.files.iter().any(|entry| entry.path == "draft.json"));
-        assert!(preview.documents.iter().any(|entry| entry.path == "SKILL.md"));
+        assert!(preview
+            .documents
+            .iter()
+            .any(|entry| entry.path == "SKILL.md"));
     }
 
     #[test]
@@ -523,12 +746,16 @@ mod tests {
         let paths = sample_paths(&repo_root);
 
         ensure_workspace(&paths).expect("ensure workspace");
-        let preview =
-            create_skill_draft(&paths, "Promo Draft", "A promoted draft", "skill").expect("create draft");
+        let preview = create_skill_draft(&paths, "Promo Draft", "A promoted draft", "skill")
+            .expect("create draft");
         let promoted = promote_draft(&paths, &preview.draft.id, None).expect("promote draft");
 
-        assert!(PathBuf::from(&promoted.promotion_target).join("SKILL.md").is_file());
-        assert!(promoted.promotion_target.ends_with("/.agents/skills/promo-draft"));
+        assert!(PathBuf::from(&promoted.promotion_target)
+            .join("SKILL.md")
+            .is_file());
+        assert!(promoted
+            .promotion_target
+            .ends_with("/.agents/skills/promo-draft"));
     }
 
     #[test]
@@ -539,9 +766,10 @@ mod tests {
         let paths = sample_paths(&repo_root);
 
         ensure_workspace(&paths).expect("ensure workspace");
-        let preview =
-            create_skill_draft(&paths, "Editable Draft", "Editable", "skill").expect("create draft");
-        let updated = update_draft_file(&paths, &preview.draft.id, "SKILL.md", "# Updated\n").expect("update");
+        let preview = create_skill_draft(&paths, "Editable Draft", "Editable", "skill")
+            .expect("create draft");
+        let updated = update_draft_file(&paths, &preview.draft.id, "SKILL.md", "# Updated\n")
+            .expect("update");
 
         assert_eq!(
             updated
@@ -560,7 +788,11 @@ mod tests {
         let repo_root = temp.path().join("repo");
         let checkout_root = repo_root.join("fixture");
         fs::create_dir_all(checkout_root.join("demo-skill")).expect("skill dir");
-        fs::write(checkout_root.join("demo-skill").join("SKILL.md"), "# Demo\n").expect("skill");
+        fs::write(
+            checkout_root.join("demo-skill").join("SKILL.md"),
+            "# Demo\n",
+        )
+        .expect("skill");
         fs::create_dir_all(&repo_root).expect("repo root");
         let paths = sample_paths(&repo_root);
 
@@ -590,9 +822,12 @@ mod tests {
             notes: Vec::new(),
         };
 
-        let preview =
-            fork_skill_draft(&paths, &catalog, "demo-skill", Some("Forked Demo"), None).expect("fork");
+        let preview = fork_skill_draft(&paths, &catalog, "demo-skill", Some("Forked Demo"), None)
+            .expect("fork");
         assert_eq!(preview.draft.preset, "fork");
-        assert!(preview.documents.iter().any(|entry| entry.path == "SKILL.md"));
+        assert!(preview
+            .documents
+            .iter()
+            .any(|entry| entry.path == "SKILL.md"));
     }
 }

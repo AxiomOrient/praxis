@@ -1,13 +1,15 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use praxis_core::{
-    benchmark_source, create_draft, doctor_workspace, fork_draft, init_workspace,
-    inspect_source_input, install_source, list_workspace, plan_install, preview_draft,
-    promote_draft, read_agent_file_state, remove_from_source, submit_human_review_action,
-    sync_workspace, update_draft, update_workspace, write_agent_file_user_content, Agent,
-    AgentFileSlot, AgentFileWriteRequest, BenchmarkRunRequest, CreateDraftRequest,
-    DraftPreviewRequest, DraftUpdateRequest, ForkDraftRequest, HumanReviewRequest,
-    InstallRequest, PromoteDraftRequest, RemoveRequest, Scope,
+    augment_draft, benchmark_source, cancel_job, create_draft, doctor_workspace, fork_draft,
+    init_workspace, inspect_source_input, install_source, jobs_work, list_workspace, plan_install,
+    preview_draft, promote_draft, read_agent_file_state, remove_from_source, retry_job,
+    submit_human_review_action, sync_workspace, update_draft, update_workspace,
+    write_agent_file_user_content, Agent, AgentFileSlot, AgentFileWriteRequest,
+    BenchmarkRunRequest, CreateDraftRequest, DraftAugmentRequest, DraftPreviewRequest,
+    DraftUpdateRequest, ExternalExecutorConfig, ExternalExecutorKind, ForkDraftRequest,
+    HumanReviewRequest, InstallRequest, JobCancelRequest, JobRetryRequest, JobWorkRequest,
+    PromoteDraftRequest, RemoveRequest, Scope,
 };
 
 #[derive(Debug, Parser)]
@@ -69,6 +71,21 @@ enum AgentFileSlotArg {
     ClaudeProjectDot,
     GeminiUserRoot,
     GeminiProjectRoot,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+enum ExecutorProviderArg {
+    Disabled,
+    CodexRuntime,
+}
+
+impl From<ExecutorProviderArg> for ExternalExecutorKind {
+    fn from(value: ExecutorProviderArg) -> Self {
+        match value {
+            ExecutorProviderArg::Disabled => ExternalExecutorKind::Disabled,
+            ExecutorProviderArg::CodexRuntime => ExternalExecutorKind::CodexRuntime,
+        }
+    }
 }
 
 impl From<AgentFileSlotArg> for AgentFileSlot {
@@ -146,6 +163,10 @@ enum Command {
         #[command(subcommand)]
         command: CreateCommand,
     },
+    Jobs {
+        #[command(subcommand)]
+        command: JobsCommand,
+    },
     Guidance {
         #[command(subcommand)]
         command: GuidanceCommand,
@@ -176,6 +197,10 @@ enum BenchmarkCommand {
         source: String,
         #[arg(long, default_value = "deterministic")]
         mode: String,
+        #[arg(long, value_enum)]
+        executor_provider: Option<ExecutorProviderArg>,
+        #[arg(long)]
+        executor_model: Option<String>,
     },
     Review {
         run_id: String,
@@ -216,6 +241,32 @@ enum CreateCommand {
         path: String,
         #[arg(long)]
         content: String,
+    },
+    Augment {
+        draft_id: String,
+        #[arg(long)]
+        prompt: String,
+        #[arg(long, value_enum, default_value_t = ExecutorProviderArg::CodexRuntime)]
+        executor_provider: ExecutorProviderArg,
+        #[arg(long)]
+        executor_model: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum JobsCommand {
+    List,
+    Work {
+        #[arg(long)]
+        session_id: Option<String>,
+        #[arg(long)]
+        max_jobs: Option<usize>,
+    },
+    Cancel {
+        job_id: String,
+    },
+    Retry {
+        job_id: String,
     },
 }
 
@@ -293,24 +344,34 @@ fn main() -> Result<()> {
         Command::Update => print_json(&update_workspace(scope, cli.root)?),
         Command::Doctor => print_json(&doctor_workspace(scope, cli.root)?),
         Command::Benchmark { command } => match command {
-            BenchmarkCommand::Run { suite, source, mode } => print_json(&benchmark_source(
-                BenchmarkRunRequest {
-                    scope,
-                    root: cli.root,
-                    suite_id: suite,
-                    source,
-                    mode: Some(mode),
-                },
-            )?),
-            BenchmarkCommand::Review { run_id, decision, note } => print_json(
-                &submit_human_review_action(HumanReviewRequest {
-                    scope,
-                    root: cli.root,
-                    run_id,
-                    decision,
-                    note,
-                })?,
-            ),
+            BenchmarkCommand::Run {
+                suite,
+                source,
+                mode,
+                executor_provider,
+                executor_model,
+            } => print_json(&benchmark_source(BenchmarkRunRequest {
+                scope,
+                root: cli.root,
+                suite_id: suite,
+                source,
+                mode: Some(mode),
+                executor: Some(ExternalExecutorConfig {
+                    provider: executor_provider.map(Into::into).unwrap_or_default(),
+                    model: executor_model,
+                }),
+            })?),
+            BenchmarkCommand::Review {
+                run_id,
+                decision,
+                note,
+            } => print_json(&submit_human_review_action(HumanReviewRequest {
+                scope,
+                root: cli.root,
+                run_id,
+                decision,
+                note,
+            })?),
         },
         Command::Create { command } => match command {
             CreateCommand::Skill {
@@ -324,11 +385,13 @@ fn main() -> Result<()> {
                 description,
                 preset,
             })?),
-            CreateCommand::Preview { draft_id } => print_json(&preview_draft(DraftPreviewRequest {
-                scope,
-                root: cli.root,
-                draft_id,
-            })?),
+            CreateCommand::Preview { draft_id } => {
+                print_json(&preview_draft(DraftPreviewRequest {
+                    scope,
+                    root: cli.root,
+                    draft_id,
+                })?)
+            }
             CreateCommand::Promote {
                 draft_id,
                 destination_root,
@@ -361,6 +424,43 @@ fn main() -> Result<()> {
                 draft_id,
                 relative_path: path,
                 content,
+            })?),
+            CreateCommand::Augment {
+                draft_id,
+                prompt,
+                executor_provider,
+                executor_model,
+            } => print_json(&augment_draft(DraftAugmentRequest {
+                scope,
+                root: cli.root,
+                draft_id,
+                prompt,
+                executor: Some(ExternalExecutorConfig {
+                    provider: executor_provider.into(),
+                    model: executor_model,
+                }),
+            })?),
+        },
+        Command::Jobs { command } => match command {
+            JobsCommand::List => print_json(&list_workspace(scope, cli.root)?.jobs),
+            JobsCommand::Work {
+                session_id,
+                max_jobs,
+            } => print_json(&jobs_work(JobWorkRequest {
+                scope,
+                root: cli.root,
+                session_id,
+                max_jobs,
+            })?),
+            JobsCommand::Cancel { job_id } => print_json(&cancel_job(JobCancelRequest {
+                scope,
+                root: cli.root,
+                job_id,
+            })?),
+            JobsCommand::Retry { job_id } => print_json(&retry_job(JobRetryRequest {
+                scope,
+                root: cli.root,
+                job_id,
             })?),
         },
         Command::Guidance { command } => match command {

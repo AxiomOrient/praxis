@@ -11,18 +11,23 @@ use crate::create::{
     read_create_snapshot, update_draft_file as persist_update_draft_file,
 };
 use crate::evaluation::{
-    read_evaluation_snapshot, run_benchmark as persist_benchmark_run,
-    submit_human_review as persist_submit_human_review,
+    attach_job_to_benchmark_run, queue_benchmark_run, read_benchmark_run, read_evaluation_snapshot,
+    run_benchmark as persist_benchmark_run,
+};
+use crate::jobs::{
+    cancel_job as persist_cancel_job, enqueue_ai_benchmark_job, enqueue_augment_draft_job,
+    enqueue_human_review_job, read_job_snapshot, retry_job as persist_retry_job,
+    work_jobs as persist_work_jobs,
 };
 use crate::library::{read_library_store_snapshot, sync_catalog_to_library};
 use crate::model::{
     Agent, AgentFileTemplate, AppliedAgentFileAction, AppliedBundle, AppliedInstall, AppliedSkill,
-    BenchmarkRunRequest, BenchmarkRunSummary, CreateDraftRequest, DraftPreview,
-    DraftPreviewRequest, DraftUpdateRequest, DoctorCheck, DoctorReport, ForkDraftRequest,
-    HumanReviewRequest, InstallPlan, InstallRequest, PlanSummary, PlannedAgentFileAction,
-    PlannedBundle, PlannedSkill, PromoteDraftRequest, RemoveRequest, Scope, SkillInfo,
-    SourceCatalog, SourceInstall, SourceRef, TargetProfile, WorkspaceLock, WorkspaceManifest,
-    WorkspaceSnapshot,
+    BenchmarkRunRequest, BenchmarkRunSummary, CreateDraftRequest, DoctorCheck, DoctorReport,
+    DraftAugmentRequest, DraftPreview, DraftPreviewRequest, DraftUpdateRequest, ForkDraftRequest,
+    HumanReviewRequest, InstallPlan, InstallRequest, JobCancelRequest, JobRetryRequest,
+    JobSnapshot, JobWorkRequest, PlanSummary, PlannedAgentFileAction, PlannedBundle, PlannedSkill,
+    PromoteDraftRequest, RemoveRequest, Scope, SkillInfo, SourceCatalog, SourceInstall, SourceRef,
+    TargetProfile, WorkspaceLock, WorkspaceManifest, WorkspaceSnapshot,
 };
 use crate::parser::{canonical_source_id, parse_source_input};
 use crate::source::{hash_directory, scan_source, should_skip_dir, source_cache_key};
@@ -88,6 +93,7 @@ pub fn list_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
         targets: target_paths(&paths, &manifest.settings),
         library: read_library_store_snapshot(&paths)?,
         evaluation: read_evaluation_snapshot(&paths)?,
+        jobs: read_job_snapshot(&paths)?,
         create: read_create_snapshot(&paths)?,
         manifest,
         lock,
@@ -219,9 +225,8 @@ pub fn sync_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
         let mut artifacts = collect_install_artifacts(&paths, &manifest, install)
             .with_context(|| format!("failed to scan source '{}'", install.id))?;
 
-        sync_catalog_to_library(&paths, &artifacts.catalog, "compat-install").with_context(
-            || format!("failed to sync library metadata for '{}'", install.id),
-        )?;
+        sync_catalog_to_library(&paths, &artifacts.catalog, "compat-install")
+            .with_context(|| format!("failed to sync library metadata for '{}'", install.id))?;
 
         desired_skills.append(&mut artifacts.desired_skills);
         desired_bundles.append(&mut artifacts.desired_bundles);
@@ -249,6 +254,7 @@ pub fn sync_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
         targets: target_paths(&paths, &manifest.settings),
         library: read_library_store_snapshot(&paths)?,
         evaluation: read_evaluation_snapshot(&paths)?,
+        jobs: read_job_snapshot(&paths)?,
         create: read_create_snapshot(&paths)?,
         manifest,
         lock: new_lock,
@@ -270,13 +276,38 @@ pub fn benchmark_source(req: BenchmarkRunRequest) -> Result<BenchmarkRunSummary>
     let baseline_source_id = manifest.installs.first().map(|install| install.id.as_str());
     let mode = req.mode.as_deref().unwrap_or("deterministic");
 
+    if mode == "ai-judge" {
+        let queued = queue_benchmark_run(
+            &paths,
+            &req.suite_id,
+            &catalog.source_id,
+            baseline_source_id,
+            mode,
+            "pending-job",
+            "Queued AI judge run",
+        )?;
+        let job = enqueue_ai_benchmark_job(
+            &paths,
+            &queued.id,
+            &req.suite_id,
+            &req.source,
+            baseline_source_id,
+            req.executor.unwrap_or_default(),
+        )?;
+        attach_job_to_benchmark_run(&paths, &queued.id, &job.id)?;
+        let _ = persist_work_jobs(&paths, Some("inline-benchmark"), Some(1));
+        return read_benchmark_run(&paths, &queued.id);
+    }
+
     persist_benchmark_run(&paths, &req.suite_id, &catalog, baseline_source_id, mode)
 }
 
 pub fn submit_human_review(req: HumanReviewRequest) -> Result<BenchmarkRunSummary> {
     let paths = resolve_workspace_paths(req.scope, req.root)?;
     ensure_workspace(&paths)?;
-    persist_submit_human_review(&paths, &req.run_id, &req.decision, &req.note)
+    enqueue_human_review_job(&paths, &req.run_id, &req.decision, &req.note)?;
+    let _ = persist_work_jobs(&paths, Some("inline-review"), Some(1));
+    read_benchmark_run(&paths, &req.run_id)
 }
 
 pub fn create_draft(req: CreateDraftRequest) -> Result<DraftPreview> {
@@ -286,15 +317,17 @@ pub fn create_draft(req: CreateDraftRequest) -> Result<DraftPreview> {
 }
 
 pub fn preview_draft(req: DraftPreviewRequest) -> Result<DraftPreview> {
+    let draft_id = require_non_empty_value("draft id", &req.draft_id)?;
     let paths = resolve_workspace_paths(req.scope, req.root)?;
     ensure_workspace(&paths)?;
-    persist_preview_draft(&paths, &req.draft_id)
+    persist_preview_draft(&paths, draft_id)
 }
 
 pub fn promote_draft(req: PromoteDraftRequest) -> Result<DraftPreview> {
+    let draft_id = require_non_empty_value("draft id", &req.draft_id)?;
     let paths = resolve_workspace_paths(req.scope, req.root)?;
     ensure_workspace(&paths)?;
-    persist_promote_draft(&paths, &req.draft_id, req.destination_root.as_deref())
+    persist_promote_draft(&paths, draft_id, req.destination_root.as_deref())
 }
 
 pub fn fork_draft(req: ForkDraftRequest) -> Result<DraftPreview> {
@@ -313,9 +346,49 @@ pub fn fork_draft(req: ForkDraftRequest) -> Result<DraftPreview> {
 }
 
 pub fn update_draft(req: DraftUpdateRequest) -> Result<DraftPreview> {
+    let draft_id = require_non_empty_value("draft id", &req.draft_id)?;
     let paths = resolve_workspace_paths(req.scope, req.root)?;
     ensure_workspace(&paths)?;
-    persist_update_draft_file(&paths, &req.draft_id, &req.relative_path, &req.content)
+    persist_update_draft_file(&paths, draft_id, &req.relative_path, &req.content)
+}
+
+pub fn augment_draft(req: DraftAugmentRequest) -> Result<DraftPreview> {
+    let draft_id = require_non_empty_value("draft id", &req.draft_id)?;
+    let paths = resolve_workspace_paths(req.scope.clone(), req.root.clone())?;
+    ensure_workspace(&paths)?;
+    enqueue_augment_draft_job(
+        &paths,
+        draft_id,
+        &req.prompt,
+        req.executor.unwrap_or_default(),
+    )?;
+    let _ = persist_work_jobs(&paths, Some("inline-augment"), Some(1));
+    let snapshot = read_create_snapshot(&paths)?;
+    let latest = snapshot
+        .drafts
+        .first()
+        .ok_or_else(|| anyhow!("no draft available after augment"))?;
+    persist_preview_draft(&paths, &latest.id)
+}
+
+pub fn jobs_work(req: JobWorkRequest) -> Result<JobSnapshot> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_work_jobs(&paths, req.session_id.as_deref(), req.max_jobs)
+}
+
+pub fn cancel_job(req: JobCancelRequest) -> Result<JobSnapshot> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_cancel_job(&paths, &req.job_id)?;
+    read_job_snapshot(&paths)
+}
+
+pub fn retry_job(req: JobRetryRequest) -> Result<JobSnapshot> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_retry_job(&paths, &req.job_id)?;
+    read_job_snapshot(&paths)
 }
 
 pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorReport> {
@@ -339,7 +412,8 @@ pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorRepo
 
     let mut ids = BTreeSet::new();
     for install in &manifest.installs {
-        if let Err(err) = validate_runtime_file_targets(&manifest.settings.target_profile, &install.targets)
+        if let Err(err) =
+            validate_runtime_file_targets(&manifest.settings.target_profile, &install.targets)
         {
             checks.push(DoctorCheck {
                 level: "error".to_string(),
@@ -480,6 +554,14 @@ pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorRepo
 
     let ok = !checks.iter().any(|c| c.level == "error");
     Ok(DoctorReport { ok, checks })
+}
+
+fn require_non_empty_value<'a>(label: &str, value: &'a str) -> Result<&'a str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("{label} must not be empty"));
+    }
+    Ok(trimmed)
 }
 
 fn build_install_record(
@@ -1497,10 +1579,9 @@ mod tests {
         let manifest = WorkspaceManifest::default();
 
         let err = normalize_targets(vec![Agent::Gemini], &manifest).expect_err("gemini rejected");
-        assert!(
-            err.to_string()
-                .contains("Gemini runtime-file targets are not supported yet")
-        );
+        assert!(err
+            .to_string()
+            .contains("Gemini runtime-file targets are not supported yet"));
     }
 
     #[test]
@@ -1515,9 +1596,8 @@ mod tests {
         };
 
         let err = normalize_targets(Vec::new(), &manifest).expect_err("profile rejected");
-        assert!(
-            err.to_string()
-                .contains("references Gemini runtime-file targets")
-        );
+        assert!(err
+            .to_string()
+            .contains("references Gemini runtime-file targets"));
     }
 }

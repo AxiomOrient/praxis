@@ -1,13 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use praxis_core::{
-    benchmark_source, create_draft, doctor_workspace, fork_draft, inspect_source_input,
-    install_source, list_workspace, plan_install, preview_draft, promote_draft,
-    read_agent_file_state, remove_from_source, submit_human_review_action, sync_workspace,
-    update_draft, update_workspace, write_agent_file_user_content, AgentFileWriteRequest,
-    BenchmarkRunRequest, CreateDraftRequest, DraftPreviewRequest, DraftUpdateRequest,
-    ForkDraftRequest, HumanReviewRequest, InstallRequest, PromoteDraftRequest, RemoveRequest,
-    Scope,
+    augment_draft, benchmark_source, cancel_job, create_draft, doctor_workspace, fork_draft,
+    inspect_source_input, install_source, jobs_work, list_workspace, plan_install, preview_draft,
+    promote_draft, read_agent_file_state, remove_from_source, retry_job,
+    submit_human_review_action, sync_workspace, update_draft, update_workspace,
+    write_agent_file_user_content, AgentFileWriteRequest, BenchmarkRunRequest, CreateDraftRequest,
+    DraftAugmentRequest, DraftPreviewRequest, DraftUpdateRequest, ForkDraftRequest,
+    HumanReviewRequest, InstallRequest, JobCancelRequest, JobRetryRequest, JobWorkRequest,
+    PromoteDraftRequest, RemoveRequest, Scope,
 };
 
 fn parse_scope(scope: &str) -> Result<Scope, String> {
@@ -84,7 +85,9 @@ fn benchmark_run(payload: BenchmarkRunRequest) -> Result<snapshot::BenchmarkRunS
 }
 
 #[tauri::command]
-fn submit_human_review(payload: HumanReviewRequest) -> Result<snapshot::BenchmarkRunSummary, String> {
+fn submit_human_review(
+    payload: HumanReviewRequest,
+) -> Result<snapshot::BenchmarkRunSummary, String> {
     submit_human_review_action(payload).map_err(|e| e.to_string())
 }
 
@@ -113,10 +116,30 @@ fn update_create_draft(payload: DraftUpdateRequest) -> Result<snapshot::DraftPre
     update_draft(payload).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn augment_create_draft(payload: DraftAugmentRequest) -> Result<snapshot::DraftPreview, String> {
+    augment_draft(payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn work_jobs(payload: JobWorkRequest) -> Result<snapshot::JobSnapshot, String> {
+    jobs_work(payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_job_command(payload: JobCancelRequest) -> Result<snapshot::JobSnapshot, String> {
+    cancel_job(payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn retry_job_command(payload: JobRetryRequest) -> Result<snapshot::JobSnapshot, String> {
+    retry_job(payload).map_err(|e| e.to_string())
+}
+
 mod snapshot {
     pub use praxis_core::model::{
         AgentFileSnapshot, BenchmarkRunSummary, DoctorReport, DraftPreview, InstallPlan,
-        SourceCatalog, WorkspaceSnapshot,
+        JobSnapshot, SourceCatalog, WorkspaceSnapshot,
     };
 }
 
@@ -141,6 +164,10 @@ pub fn run() {
             promote_create_draft,
             fork_create_draft,
             update_create_draft,
+            augment_create_draft,
+            work_jobs,
+            cancel_job_command,
+            retry_job_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running praxis desktop");
@@ -151,9 +178,10 @@ mod tests {
     use super::snapshot::{AgentFileSnapshot, InstallPlan, WorkspaceSnapshot};
     use praxis_core::model::{
         Agent, AgentFileSlot, AgentFileState, BenchmarkRunSummary, BenchmarkSuiteSummary,
-        CreateSnapshot, DraftDocument, DraftPreview, DraftSummary, EvaluationSnapshot,
-        InstallSelection, LibraryStats, LibraryStoreSnapshot, ManagedAgentFileBlock, PlanSummary,
-        PlannedAgentFileAction, SourceInstall, SourceRef, TargetPaths, TargetProfile,
+        CreateSnapshot, DraftDocument, DraftLineage, DraftPreview, DraftSummary,
+        EvaluationSnapshot, InstallSelection, JobSnapshot, JobSummary, LibraryStats,
+        LibraryStoreSnapshot, ManagedAgentFileBlock, PlanSummary, PlannedAgentFileAction,
+        PromotionReviewSummary, SourceInstall, SourceRef, TargetPaths, TargetProfile,
         WorkspaceLock, WorkspaceManifest, WorkspaceSettings,
     };
     use serde_json::Value;
@@ -223,15 +251,40 @@ mod tests {
                     suite_id: "runtime-conformance".to_string(),
                     candidate_source_id: "github:owner/repo@default#root".to_string(),
                     baseline_source_id: None,
+                    job_id: Some("job_1234567890abcdef".to_string()),
                     mode: "deterministic".to_string(),
                     status: "succeeded".to_string(),
                     recommendation: "promote".to_string(),
                     score: 27.0,
-                    summary: "Runtime Conformance: 1 skills, 0 decks, 1 agent file templates, 0 warnings".to_string(),
+                    summary:
+                        "Runtime Conformance: 1 skills, 0 decks, 1 agent file templates, 0 warnings"
+                            .to_string(),
                     reviewer_note: None,
                     review_decision: None,
+                    evidence_path: Some(
+                        "/tmp/.praxis/jobs/job_1234567890abcdef.evidence.md".to_string(),
+                    ),
                     created_at: "2026-01-01T00:00:00Z".to_string(),
                     finished_at: "2026-01-01T00:00:00Z".to_string(),
+                }],
+            },
+            jobs: JobSnapshot {
+                queued: 1,
+                running: 0,
+                failed: 0,
+                recent_jobs: vec![JobSummary {
+                    id: "job_1234567890abcdef".to_string(),
+                    kind: "benchmark-ai-judge".to_string(),
+                    status: "succeeded".to_string(),
+                    subject_id: "br_1234567890abcdef".to_string(),
+                    summary: "benchmark complete".to_string(),
+                    leased_by_session: None,
+                    lease_expires_at: None,
+                    attempts: 1,
+                    last_error: None,
+                    log_path: "/tmp/.praxis/jobs/job_1234567890abcdef.log".to_string(),
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                    updated_at: "2026-01-01T00:00:00Z".to_string(),
                 }],
             },
             create: CreateSnapshot {
@@ -241,6 +294,15 @@ mod tests {
                     artifact_kind: "skill".to_string(),
                     version_id: "drv_demo".to_string(),
                     preset: "skill".to_string(),
+                    lineage: DraftLineage {
+                        origin_kind: "create".to_string(),
+                        source_id: None,
+                        parent_version_id: None,
+                        parent_name: None,
+                        augmentation_prompt: None,
+                        promotion_path: None,
+                        promoted_at: None,
+                    },
                     created_at: "2026-01-01T00:00:00Z".to_string(),
                     updated_at: "2026-01-01T00:00:00Z".to_string(),
                 }],
@@ -249,7 +311,10 @@ mod tests {
         };
 
         let value = serde_json::to_value(snapshot).expect("serialize workspace snapshot");
-        let manifest = value.get("manifest").and_then(Value::as_object).expect("manifest");
+        let manifest = value
+            .get("manifest")
+            .and_then(Value::as_object)
+            .expect("manifest");
         let settings = manifest
             .get("settings")
             .and_then(Value::as_object)
@@ -263,12 +328,19 @@ mod tests {
             .and_then(Value::as_object)
             .expect("selection");
         let lock = value.get("lock").and_then(Value::as_object).expect("lock");
-        let library = value.get("library").and_then(Value::as_object).expect("library");
+        let library = value
+            .get("library")
+            .and_then(Value::as_object)
+            .expect("library");
         let evaluation = value
             .get("evaluation")
             .and_then(Value::as_object)
             .expect("evaluation");
-        let create = value.get("create").and_then(Value::as_object).expect("create");
+        let jobs = value.get("jobs").and_then(Value::as_object).expect("jobs");
+        let create = value
+            .get("create")
+            .and_then(Value::as_object)
+            .expect("create");
 
         assert!(settings.contains_key("target_profile"));
         assert!(settings.contains_key("write_codex_agent_alias"));
@@ -283,6 +355,7 @@ mod tests {
             .contains_key("artifacts"));
         assert!(evaluation.get("suites").is_some());
         assert!(evaluation.get("recent_runs").is_some());
+        assert!(jobs.get("recent_jobs").is_some());
         assert!(create.get("drafts").is_some());
     }
 
@@ -371,6 +444,7 @@ mod tests {
             suite_id: "runtime-conformance".to_string(),
             candidate_source_id: "github:owner/repo@default#root".to_string(),
             baseline_source_id: Some("github:owner/repo@old#root".to_string()),
+            job_id: Some("job_1234567890abcdef".to_string()),
             mode: "human-review".to_string(),
             status: "awaiting_human".to_string(),
             recommendation: "manual_review".to_string(),
@@ -378,6 +452,7 @@ mod tests {
             summary: "Awaiting human review.".to_string(),
             reviewer_note: None,
             review_decision: None,
+            evidence_path: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             finished_at: String::new(),
         };
@@ -388,6 +463,15 @@ mod tests {
                 artifact_kind: "skill".to_string(),
                 version_id: "drv_demo".to_string(),
                 preset: "fork".to_string(),
+                lineage: DraftLineage {
+                    origin_kind: "fork".to_string(),
+                    source_id: Some("github:owner/repo@default#root".to_string()),
+                    parent_version_id: Some("sv_demo".to_string()),
+                    parent_name: Some("demo-skill".to_string()),
+                    augmentation_prompt: None,
+                    promotion_path: None,
+                    promoted_at: None,
+                },
                 created_at: "2026-01-01T00:00:00Z".to_string(),
                 updated_at: "2026-01-01T00:00:00Z".to_string(),
             },
@@ -401,15 +485,25 @@ mod tests {
                 editable: true,
             }],
             promotion_target: "/tmp/.agents/skills/demo-draft".to_string(),
+            review: PromotionReviewSummary {
+                changed_files: 1,
+                latest_recommendation: Some("promote".to_string()),
+                latest_run_status: Some("succeeded".to_string()),
+                latest_run_summary: Some("Looks good.".to_string()),
+                pending_job_count: 0,
+            },
         };
 
         let run_value = serde_json::to_value(run).expect("serialize benchmark run");
         let preview_value = serde_json::to_value(preview).expect("serialize draft preview");
 
         assert!(run_value.get("mode").is_some());
+        assert!(run_value.get("job_id").is_some());
         assert!(run_value.get("reviewer_note").is_some());
         assert!(run_value.get("review_decision").is_some());
+        assert!(run_value.get("evidence_path").is_some());
         assert!(preview_value.get("documents").is_some());
+        assert!(preview_value.get("review").is_some());
         assert!(preview_value["documents"][0].get("content").is_some());
         assert!(preview_value["documents"][0].get("editable").is_some());
     }

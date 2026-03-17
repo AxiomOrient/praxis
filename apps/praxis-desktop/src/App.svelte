@@ -12,6 +12,7 @@
     RefreshCw,
     Search,
     Settings2,
+    Sparkles,
     Trash2,
     User,
   } from "lucide-svelte";
@@ -21,7 +22,9 @@
   import InstalledSourceCard from "./lib/components/InstalledSourceCard.svelte";
   import StarterSourceCard from "./lib/components/StarterSourceCard.svelte";
   import {
+    augmentCreateDraft,
     benchmarkRun,
+    cancelJob,
     createSkillDraft,
     doctor,
     forkCreateDraft,
@@ -35,8 +38,10 @@
     remove,
     submitHumanReview,
     sync,
+    retryJob,
     update,
     updateCreateDraft,
+    workJobs,
     workspace,
   } from "./lib/api";
   import type {
@@ -50,6 +55,7 @@
     DraftPreview,
     InstallPlan,
     InstallPayload,
+    JobSummary,
     Scope,
     SkillInfo,
     SourceCatalog,
@@ -106,8 +112,10 @@
   let draftDescription = $state("Draft created from Praxis desktop flow.");
   let draftPreset = $state("skill");
   let benchmarkMode = $state("deterministic");
+  let aiExecutorModel = $state("");
   let reviewDecision = $state("promote");
   let reviewNote = $state("");
+  let augmentPrompt = $state("Tighten the purpose, inputs, and outputs.");
   let selectedForkSkill = $state("");
   let draftEditorPath = $state("SKILL.md");
   let draftEditorContent = $state("");
@@ -204,9 +212,18 @@
   const createDrafts = $derived.by(() => snapshot?.create.drafts ?? []);
   const benchmarkSuites = $derived.by(() => snapshot?.evaluation.suites ?? []);
   const recentBenchmarkRuns = $derived.by(() => snapshot?.evaluation.recent_runs ?? []);
+  const recentJobs = $derived.by(() => snapshot?.jobs.recent_jobs ?? []);
   const pendingHumanRuns = $derived.by(() =>
     recentBenchmarkRuns.filter((run) => run.status === "awaiting_human" && run.mode === "human-review"),
   );
+  const activeDraftJobs = $derived.by(() =>
+    selectedDraftId ? recentJobs.filter((job) => job.subject_id === selectedDraftId) : [],
+  );
+  const activeDraftEvidence = $derived.by(() => {
+    const sourceId = createPreview?.draft.lineage.source_id;
+    if (!sourceId) return null;
+    return recentBenchmarkRuns.find((run) => run.candidate_source_id === sourceId) ?? null;
+  });
   const activeDraftSummary = $derived.by(
     () => createDrafts.find((draft) => draft.id === selectedDraftId) ?? createDrafts[0] ?? null,
   );
@@ -587,6 +604,13 @@
         suite_id: suiteId,
         source: sourceInput,
         mode: benchmarkMode,
+        executor:
+          benchmarkMode === "ai-judge"
+            ? {
+                provider: "codex-runtime",
+                model: aiExecutorModel.trim() || null,
+              }
+            : null,
       });
       snapshot = await workspace(scope, currentRoot());
       activeTab = "benchmarks";
@@ -729,6 +753,35 @@
     }
   }
 
+  async function handleAugmentDraft() {
+    if (!selectedDraftId || !augmentPrompt.trim()) {
+      error = tr("create.errorNoDraftDocument");
+      return;
+    }
+
+    busy = true;
+    error = null;
+    try {
+      const nextPreview = await augmentCreateDraft({
+        scope,
+        root: currentRoot(),
+        draft_id: selectedDraftId,
+        prompt: augmentPrompt.trim(),
+        executor: {
+          provider: "codex-runtime",
+          model: aiExecutorModel.trim() || null,
+        },
+      });
+      hydrateCreatePreview(nextPreview);
+      snapshot = await workspace(scope, currentRoot());
+      activeTab = "create";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function handleSubmitHumanReview(runId: string) {
     busy = true;
     error = null;
@@ -743,6 +796,58 @@
       snapshot = await workspace(scope, currentRoot());
       reviewNote = "";
       activeTab = "benchmarks";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleWorkJobs() {
+    busy = true;
+    error = null;
+    try {
+      await workJobs({
+        scope,
+        root: currentRoot(),
+        session_id: "desktop",
+        max_jobs: 3,
+      });
+      snapshot = await workspace(scope, currentRoot());
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleCancelJob(jobId: string) {
+    busy = true;
+    error = null;
+    try {
+      await cancelJob({
+        scope,
+        root: currentRoot(),
+        job_id: jobId,
+      });
+      snapshot = await workspace(scope, currentRoot());
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleRetryJob(jobId: string) {
+    busy = true;
+    error = null;
+    try {
+      await retryJob({
+        scope,
+        root: currentRoot(),
+        job_id: jobId,
+      });
+      snapshot = await workspace(scope, currentRoot());
     } catch (err) {
       error = String(err);
     } finally {
@@ -1665,6 +1770,10 @@
                   placeholder={tr("create.descriptionPlaceholder")}
                 ></textarea>
               </label>
+              <label class="stack-field">
+                <span class="field-label">{tr("create.augmentPromptLabel")}</span>
+                <textarea class="source-input" rows="3" bind:value={augmentPrompt}></textarea>
+              </label>
               <div class="button-row">
                 <button class="primary" disabled={busy} onclick={handleCreateDraft}>
                   <DownloadCloud size={16} /> {tr("create.createDraft")}
@@ -1686,6 +1795,9 @@
                   <button disabled={busy} onclick={() => handlePreviewDraft(activeDraftSummary.id)}>
                     {tr("create.refreshPreview")}
                   </button>
+                  <button disabled={busy} onclick={handleAugmentDraft}>
+                    <Sparkles size={16} /> {tr("create.augmentAction")}
+                  </button>
                 {/if}
               </div>
             </div>
@@ -1695,8 +1807,12 @@
                 {#each createDrafts as draft}
                   <div class:selected-row={selectedDraftId === draft.id} class="check-row info interactive-row">
                     <strong>{draft.artifact_kind}</strong>
-                    <span>{draft.preset}</span>
+                    <span>{draft.lineage.origin_kind}</span>
                     <p>{draft.name} · {draft.version_id}</p>
+                    <p>
+                      {draft.lineage.parent_name ?? tr("create.lineageRoot")} ·
+                      {draft.lineage.parent_version_id ?? tr("create.lineageStandalone")}
+                    </p>
                     <div class="row-actions">
                       <p>{tr("create.updatedAt", { value: draft.updated_at })}</p>
                       <div class="button-row compact">
@@ -1730,6 +1846,28 @@
                 <div class="stat">
                   <span>{tr("create.promotionTarget")}</span>
                   <strong>{createPreview.promotion_target}</strong>
+                </div>
+                <div class="receipt-panel">
+                  <div class="receipt-row">
+                    <span>{tr("create.lineageOrigin")}</span>
+                    <strong>{createPreview.draft.lineage.origin_kind}</strong>
+                  </div>
+                  <div class="receipt-row">
+                    <span>{tr("create.lineageParent")}</span>
+                    <strong>{createPreview.draft.lineage.parent_name ?? tr("create.lineageRoot")}</strong>
+                  </div>
+                  <div class="receipt-row">
+                    <span>{tr("create.reviewChangedFiles")}</span>
+                    <strong>{createPreview.review.changed_files}</strong>
+                  </div>
+                  <div class="receipt-row">
+                    <span>{tr("create.reviewPendingJobs")}</span>
+                    <strong>{activeDraftJobs.length || createPreview.review.pending_job_count}</strong>
+                  </div>
+                  <div class="receipt-row">
+                    <span>{tr("create.reviewLatestEvidence")}</span>
+                    <strong>{activeDraftEvidence?.recommendation ?? createPreview.review.latest_recommendation ?? tr("common.none")}</strong>
+                  </div>
                 </div>
                 {#if createPreview.documents.length}
                   <div class="field-grid">
@@ -1794,8 +1932,15 @@
                 <select class="source-input" bind:value={benchmarkMode}>
                   <option value="deterministic">{tr("benchmarks.modeDeterministic")}</option>
                   <option value="human-review">{tr("benchmarks.modeHumanReview")}</option>
+                  <option value="ai-judge">{tr("benchmarks.modeAiJudge")}</option>
                 </select>
               </label>
+              {#if benchmarkMode === "ai-judge"}
+                <label class="stack-field">
+                  <span class="field-label">{tr("benchmarks.executorModelLabel")}</span>
+                  <input class="source-input" bind:value={aiExecutorModel} placeholder={tr("benchmarks.executorModelPlaceholder")} />
+                </label>
+              {/if}
               <div class="button-row">
                 {#each benchmarkSuites as suite}
                   <button class="primary" disabled={busy} onclick={() => handleBenchmarkRun(suite.id)}>
@@ -1814,6 +1959,39 @@
                 </div>
               {/each}
             </div>
+          </section>
+
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>{tr("benchmarks.jobsTitle")}</h2>
+                <p>{tr("benchmarks.jobsCopy")}</p>
+              </div>
+              <button disabled={busy} onclick={handleWorkJobs}>
+                <RefreshCw size={14} /> {tr("benchmarks.workJobs")}
+              </button>
+            </div>
+
+            {#if recentJobs.length}
+              <div class="list">
+                {#each recentJobs as job}
+                  <div class="check-row info">
+                    <strong>{job.kind}</strong>
+                    <span>{job.status}</span>
+                    <p>{job.summary}</p>
+                    <p>{job.subject_id}</p>
+                    <div class="button-row compact">
+                      <button disabled={busy} onclick={() => handleRetryJob(job.id)}>{tr("benchmarks.retryJob")}</button>
+                      <button disabled={busy} onclick={() => handleCancelJob(job.id)}>{tr("benchmarks.cancelJob")}</button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="empty-inline">
+                <p>{tr("benchmarks.noJobsYet")}</p>
+              </div>
+            {/if}
           </section>
 
           <section class="section">

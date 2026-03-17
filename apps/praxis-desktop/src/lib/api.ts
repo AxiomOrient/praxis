@@ -5,6 +5,7 @@ import type {
   BenchmarkRunPayload,
   BenchmarkRunSummary,
   CreateDraftPayload,
+  DraftAugmentPayload,
   DraftUpdatePayload,
   DoctorReport,
   DraftPreview,
@@ -13,6 +14,9 @@ import type {
   HumanReviewPayload,
   InstallPayload,
   InstallPlan,
+  JobControlPayload,
+  JobSnapshot,
+  JobWorkPayload,
   PromoteDraftPayload,
   RemovePayload,
   Scope,
@@ -86,4 +90,20 @@ export async function forkCreateDraft(payload: ForkDraftPayload): Promise<DraftP
 
 export async function updateCreateDraft(payload: DraftUpdatePayload): Promise<DraftPreview> {
   return invoke("update_create_draft", { payload });
+}
+
+export async function augmentCreateDraft(payload: DraftAugmentPayload): Promise<DraftPreview> {
+  return invoke("augment_create_draft", { payload });
+}
+
+export async function workJobs(payload: JobWorkPayload): Promise<JobSnapshot> {
+  return invoke("work_jobs", { payload });
+}
+
+export async function cancelJob(payload: JobControlPayload): Promise<JobSnapshot> {
+  return invoke("cancel_job_command", { payload });
+}
+
+export async function retryJob(payload: JobControlPayload): Promise<JobSnapshot> {
+  return invoke("retry_job_command", { payload });
 }

@@ -444,6 +444,7 @@ mod tests {
             scope: Scope::Repo,
             repo_root: Some(root.to_path_buf()),
             state_dir: state_dir.clone(),
+            jobs_dir: state_dir.join("jobs"),
             db_dir: state_dir.join("db"),
             library_dir: state_dir.join("library"),
             library_db_path: state_dir.join("db").join("praxis.db"),

@@ -147,20 +147,21 @@ Required outputs:
 
 ## Current Execution Slice
 
-This run executed the full P0→P5 convergence slice:
+This run executed the full P0→P7 convergence slice:
 
 1. canonical/spec/README/desktop IA convergence
 2. runtime workspace path invariants plus target-profile-aware validation
 3. library metadata DB plus filesystem artifact store
 4. evaluation suite/run persistence plus desktop evidence surfaces
 5. create draft/preview/promotion flows against repository contracts
+6. optional `codex-runtime` executor boundary plus persisted cooperative jobs
+7. lineage-aware create review and promotion-oriented desktop surfaces
 
 ## Out Of Scope For This Run
 
-- non-deterministic AI judge execution
-- human review workflows and lease-based jobs
-- advanced fork/augment lineage UX
-- full authoring UI beyond draft/evidence summaries
+- hosted or remote provider abstractions beyond local `codex-runtime`
+- graph-heavy lineage visualization beyond ancestry/review summaries
+- autonomous multi-run orchestration as a first-class Praxis product boundary
 
 ## Recommended Next-Step Boundary
 

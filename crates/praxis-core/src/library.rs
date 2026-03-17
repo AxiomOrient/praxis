@@ -43,7 +43,9 @@ pub fn sync_catalog_to_library(
     ensure_library_store(paths)?;
 
     let snapshot_id = source_snapshot_id(catalog);
-    let import_manifest_path = paths.library_imports_dir.join(format!("{snapshot_id}.json"));
+    let import_manifest_path = paths
+        .library_imports_dir
+        .join(format!("{snapshot_id}.json"));
     fs::write(
         &import_manifest_path,
         serde_json::to_string_pretty(catalog).context("serialize source catalog")?,
@@ -422,7 +424,10 @@ fn source_snapshot_id(catalog: &SourceCatalog) -> String {
     let seed = format!(
         "{}:{}:{}",
         catalog.source_id,
-        catalog.resolved_reference.as_deref().unwrap_or("unresolved"),
+        catalog
+            .resolved_reference
+            .as_deref()
+            .unwrap_or("unresolved"),
         catalog.source_hash
     );
     prefixed_hash("ss", &hash_text(&seed))
@@ -473,7 +478,11 @@ fn copy_tree(source: &Path, target: &Path) -> Result<()> {
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
         fs::copy(source, target).with_context(|| {
-            format!("failed to copy {} to {}", source.display(), target.display())
+            format!(
+                "failed to copy {} to {}",
+                source.display(),
+                target.display()
+            )
         })?;
         Ok(())
     }
@@ -516,8 +525,10 @@ fn hash_bytes(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AgentFileSlot, AgentFileTemplate, AgentFileTemplateOrigin, DeckInfo, SkillInfo};
-    use crate::model::{RecipeHint, RecipeBundle};
+    use crate::model::{
+        AgentFileSlot, AgentFileTemplate, AgentFileTemplateOrigin, DeckInfo, SkillInfo,
+    };
+    use crate::model::{RecipeBundle, RecipeHint};
     use crate::workspace::ensure_workspace;
     use tempfile::tempdir;
 
@@ -527,6 +538,7 @@ mod tests {
             scope: crate::model::Scope::Repo,
             repo_root: Some(root.to_path_buf()),
             state_dir: state_dir.clone(),
+            jobs_dir: state_dir.join("jobs"),
             db_dir: state_dir.join("db"),
             library_dir: state_dir.join("library"),
             library_db_path: state_dir.join("db").join("praxis.db"),
@@ -651,6 +663,9 @@ mod tests {
         assert_eq!(snapshot.stats.sources, 1);
         assert_eq!(snapshot.stats.snapshots, 1);
         assert_eq!(snapshot.stats.artifacts, 4);
-        assert!(paths.library_imports_dir.join(format!("{}.json", source_snapshot_id(&catalog))).is_file());
+        assert!(paths
+            .library_imports_dir
+            .join(format!("{}.json", source_snapshot_id(&catalog)))
+            .is_file());
     }
 }

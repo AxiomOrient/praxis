@@ -6,6 +6,7 @@ export type TargetProfile =
   | "gemini-native"
   | "codex-gemini-shared-open-standard"
   | "multi-runtime-default";
+export type ExternalExecutorKind = "disabled" | "codex-runtime";
 export type AgentFileSlot =
   | "codex-user-root"
   | "codex-user-override"
@@ -175,6 +176,7 @@ export interface WorkspaceSnapshot {
     suites: BenchmarkSuiteSummary[];
     recent_runs: BenchmarkRunSummary[];
   };
+  jobs: JobSnapshot;
   create: CreateSnapshot;
   warnings: string[];
 }
@@ -192,6 +194,7 @@ export interface BenchmarkRunSummary {
   suite_id: string;
   candidate_source_id: string;
   baseline_source_id?: string | null;
+  job_id?: string | null;
   mode: string;
   status: string;
   recommendation: string;
@@ -199,8 +202,41 @@ export interface BenchmarkRunSummary {
   summary: string;
   reviewer_note?: string | null;
   review_decision?: string | null;
+  evidence_path?: string | null;
   created_at: string;
   finished_at: string;
+}
+
+export interface JobSummary {
+  id: string;
+  kind: string;
+  status: string;
+  subject_id: string;
+  summary: string;
+  leased_by_session?: string | null;
+  lease_expires_at?: string | null;
+  attempts: number;
+  last_error?: string | null;
+  log_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobSnapshot {
+  queued: number;
+  running: number;
+  failed: number;
+  recent_jobs: JobSummary[];
+}
+
+export interface DraftLineage {
+  origin_kind: string;
+  source_id?: string | null;
+  parent_version_id?: string | null;
+  parent_name?: string | null;
+  augmentation_prompt?: string | null;
+  promotion_path?: string | null;
+  promoted_at?: string | null;
 }
 
 export interface DraftSummary {
@@ -209,6 +245,7 @@ export interface DraftSummary {
   artifact_kind: string;
   version_id: string;
   preset: string;
+  lineage: DraftLineage;
   created_at: string;
   updated_at: string;
 }
@@ -223,16 +260,30 @@ export interface DraftPreview {
   files: PreviewTreeEntry[];
   documents: DraftDocument[];
   promotion_target: string;
+  review: PromotionReviewSummary;
 }
 
 export interface CreateSnapshot {
   drafts: DraftSummary[];
 }
 
+export interface PromotionReviewSummary {
+  changed_files: number;
+  latest_recommendation?: string | null;
+  latest_run_status?: string | null;
+  latest_run_summary?: string | null;
+  pending_job_count: number;
+}
+
 export interface DraftDocument {
   path: string;
   content: string;
   editable: boolean;
+}
+
+export interface ExternalExecutorConfig {
+  provider: ExternalExecutorKind;
+  model?: string | null;
 }
 
 export interface ManagedAgentFileBlock {
@@ -360,6 +411,7 @@ export interface BenchmarkRunPayload {
   suite_id: string;
   source: string;
   mode?: string | null;
+  executor?: ExternalExecutorConfig | null;
 }
 
 export interface HumanReviewPayload {
@@ -406,4 +458,25 @@ export interface DraftUpdatePayload {
   draft_id: string;
   relative_path: string;
   content: string;
+}
+
+export interface DraftAugmentPayload {
+  scope: Scope;
+  root?: string | null;
+  draft_id: string;
+  prompt: string;
+  executor?: ExternalExecutorConfig | null;
+}
+
+export interface JobWorkPayload {
+  scope: Scope;
+  root?: string | null;
+  session_id?: string | null;
+  max_jobs?: number | null;
+}
+
+export interface JobControlPayload {
+  scope: Scope;
+  root?: string | null;
+  job_id: string;
 }

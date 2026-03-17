@@ -8,6 +8,7 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+codex-runtime.workspace = true
 dirs.workspace = true
 flate2.workspace = true
 hex.workspace = true
@@ -21,4 +22,5 @@ sha2.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 toml.workspace = true

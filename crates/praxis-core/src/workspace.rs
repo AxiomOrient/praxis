@@ -12,6 +12,7 @@ pub struct WorkspacePaths {
     pub scope: Scope,
     pub repo_root: Option<PathBuf>,
     pub state_dir: PathBuf,
+    pub jobs_dir: PathBuf,
     pub db_dir: PathBuf,
     pub library_dir: PathBuf,
     pub library_db_path: PathBuf,
@@ -60,6 +61,7 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
             Ok(WorkspacePaths {
                 scope: Scope::Repo,
                 repo_root: Some(repo_root.clone()),
+                jobs_dir: state_dir.join("jobs"),
                 db_dir: state_dir.join("db"),
                 library_dir: state_dir.join("library"),
                 library_db_path: state_dir.join("db").join("praxis.db"),
@@ -97,6 +99,7 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
             Ok(WorkspacePaths {
                 scope: Scope::User,
                 repo_root: None,
+                jobs_dir: state_dir.join("jobs"),
                 db_dir: state_dir.join("db"),
                 library_dir: state_dir.join("library"),
                 library_db_path: state_dir.join("db").join("praxis.db"),
@@ -131,6 +134,7 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
 
 pub fn ensure_workspace(paths: &WorkspacePaths) -> Result<()> {
     fs::create_dir_all(&paths.state_dir)?;
+    fs::create_dir_all(&paths.jobs_dir)?;
     fs::create_dir_all(&paths.db_dir)?;
     fs::create_dir_all(&paths.library_dir)?;
     fs::create_dir_all(&paths.library_imports_dir)?;
@@ -250,6 +254,7 @@ mod tests {
             scope: Scope::Repo,
             repo_root: Some(repo_root.clone()),
             state_dir: repo_root.join(".praxis"),
+            jobs_dir: repo_root.join(".praxis").join("jobs"),
             db_dir: repo_root.join(".praxis").join("db"),
             library_dir: repo_root.join(".praxis").join("library"),
             library_db_path: repo_root.join(".praxis").join("db").join("praxis.db"),
@@ -257,7 +262,10 @@ mod tests {
             library_drafts_dir: repo_root.join(".praxis").join("library").join("drafts"),
             library_skills_dir: repo_root.join(".praxis").join("library").join("skills"),
             library_decks_dir: repo_root.join(".praxis").join("library").join("decks"),
-            library_agent_files_dir: repo_root.join(".praxis").join("library").join("agent-files"),
+            library_agent_files_dir: repo_root
+                .join(".praxis")
+                .join("library")
+                .join("agent-files"),
             library_bundles_dir: repo_root.join(".praxis").join("library").join("bundles"),
             cache_dir: repo_root.join(".praxis").join("cache"),
             manifest_path: repo_root.join(".praxis").join("manifest.toml"),
@@ -303,6 +311,7 @@ mod tests {
             scope: Scope::Repo,
             repo_root: Some(repo_root.clone()),
             state_dir: state_dir.clone(),
+            jobs_dir: state_dir.join("jobs"),
             db_dir: state_dir.join("db"),
             library_dir: state_dir.join("library"),
             library_db_path: state_dir.join("db").join("praxis.db"),
@@ -335,6 +344,7 @@ mod tests {
         assert!(paths.codex_skills_dir.is_dir());
         assert!(paths.claude_skills_dir.is_dir());
         assert!(paths.gemini_skills_dir.is_dir());
+        assert!(paths.jobs_dir.is_dir());
         assert!(paths.db_dir.is_dir());
         assert!(paths.library_imports_dir.is_dir());
         assert!(paths.library_drafts_dir.is_dir());

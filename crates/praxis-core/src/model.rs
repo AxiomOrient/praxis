@@ -65,7 +65,10 @@ impl TargetProfile {
     }
 
     pub fn references_gemini_runtime_targets(&self) -> bool {
-        matches!(self, Self::GeminiNative | Self::CodexGeminiSharedOpenStandard)
+        matches!(
+            self,
+            Self::GeminiNative | Self::CodexGeminiSharedOpenStandard
+        )
     }
 }
 
@@ -378,6 +381,44 @@ pub struct LibraryStoreSnapshot {
     pub stats: LibraryStats,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExternalExecutorKind {
+    #[default]
+    Disabled,
+    CodexRuntime,
+}
+
+impl ExternalExecutorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::CodexRuntime => "codex-runtime",
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExternalExecutorConfig {
+    #[serde(default)]
+    pub provider: ExternalExecutorKind,
+    pub model: Option<String>,
+}
+
+impl ExternalExecutorConfig {
+    pub fn disabled() -> Self {
+        Self::default()
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.provider.is_enabled()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkSuiteSummary {
     pub id: String,
@@ -393,6 +434,7 @@ pub struct BenchmarkRunSummary {
     pub suite_id: String,
     pub candidate_source_id: String,
     pub baseline_source_id: Option<String>,
+    pub job_id: Option<String>,
     pub mode: String,
     pub status: String,
     pub recommendation: String,
@@ -400,8 +442,33 @@ pub struct BenchmarkRunSummary {
     pub summary: String,
     pub reviewer_note: Option<String>,
     pub review_decision: Option<String>,
+    pub evidence_path: Option<String>,
     pub created_at: String,
     pub finished_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobSummary {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub subject_id: String,
+    pub summary: String,
+    pub leased_by_session: Option<String>,
+    pub lease_expires_at: Option<String>,
+    pub attempts: usize,
+    pub last_error: Option<String>,
+    pub log_path: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobSnapshot {
+    pub queued: usize,
+    pub running: usize,
+    pub failed: usize,
+    pub recent_jobs: Vec<JobSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -411,12 +478,24 @@ pub struct EvaluationSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftLineage {
+    pub origin_kind: String,
+    pub source_id: Option<String>,
+    pub parent_version_id: Option<String>,
+    pub parent_name: Option<String>,
+    pub augmentation_prompt: Option<String>,
+    pub promotion_path: Option<String>,
+    pub promoted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DraftSummary {
     pub id: String,
     pub name: String,
     pub artifact_kind: String,
     pub version_id: String,
     pub preset: String,
+    pub lineage: DraftLineage,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -440,11 +519,21 @@ pub struct DraftPreview {
     pub files: Vec<PreviewTreeEntry>,
     pub documents: Vec<DraftDocument>,
     pub promotion_target: String,
+    pub review: PromotionReviewSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSnapshot {
     pub drafts: Vec<DraftSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromotionReviewSummary {
+    pub changed_files: usize,
+    pub latest_recommendation: Option<String>,
+    pub latest_run_status: Option<String>,
+    pub latest_run_summary: Option<String>,
+    pub pending_job_count: usize,
 }
 
 // ─── Workspace snapshot ───────────────────────────────────────────────────────
@@ -456,6 +545,7 @@ pub struct WorkspaceSnapshot {
     pub targets: TargetPaths,
     pub library: LibraryStoreSnapshot,
     pub evaluation: EvaluationSnapshot,
+    pub jobs: JobSnapshot,
     pub create: CreateSnapshot,
     pub warnings: Vec<String>,
 }
@@ -539,6 +629,7 @@ pub struct BenchmarkRunRequest {
     pub suite_id: String,
     pub source: String,
     pub mode: Option<String>,
+    pub executor: Option<ExternalExecutorConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -548,6 +639,37 @@ pub struct HumanReviewRequest {
     pub run_id: String,
     pub decision: String,
     pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftAugmentRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub draft_id: String,
+    pub prompt: String,
+    pub executor: Option<ExternalExecutorConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobWorkRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub session_id: Option<String>,
+    pub max_jobs: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobCancelRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub job_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobRetryRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub job_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
