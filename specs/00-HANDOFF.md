@@ -33,9 +33,9 @@ Praxis inspects external repositories, lets users choose decks, atomic skills, a
 Praxis has four equal pillars:
 
 1. **Discover** external sources and inspect what they contain.
-2. **Manage** installed skills and decks with exact ownership and removal.
-3. **Manage Agent Files** for Codex, Claude Code, and Gemini CLI as first-class runtime artifacts.
-4. **Create** new skills, decks, and agent-file templates with compatibility presets.
+2. **Library** managed artifacts, installed outputs, and runtime workspace state.
+3. **Create** new skills, decks, and agent-file templates with compatibility presets.
+4. **Benchmarks** compare and promote candidate artifacts with explicit evidence.
 
 Benchmarks exist to compare and promote artifacts, but they do not replace the management plane.
 
@@ -46,7 +46,6 @@ Primary navigation:
 - Discover
 - Library
 - Create
-- Agent Files
 - Benchmarks
 
 Utility navigation:
@@ -60,6 +59,8 @@ Transient flows:
 - Inspect
 - Preview Plan
 - Apply
+- Deck Views
+- Agent Files Editor
 - Conflict Review
 - Update Review
 

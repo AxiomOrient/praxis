@@ -12,7 +12,7 @@ This skill combines contract-style spec structure with AI execution rules.
 
 ## Workflow
 
-1. Read [plans/PRAXIS_SPEC_WRITING_STANDARD.md](../../../plans/PRAXIS_SPEC_WRITING_STANDARD.md).
+1. Read [docs/PRAXIS_SPEC_WRITING_STANDARD.md](../../../docs/PRAXIS_SPEC_WRITING_STANDARD.md).
 2. Decide whether the task needs a full 18-section spec or a smaller scoped artifact.
 3. For a full implementation spec, start from [assets/spec-writing-standard-template.md](assets/spec-writing-standard-template.md).
 4. Ground the draft in current repository evidence before making design decisions.
@@ -46,6 +46,6 @@ This skill combines contract-style spec structure with AI execution rules.
 
 ## Resources
 
-- Canonical standard: [plans/PRAXIS_SPEC_WRITING_STANDARD.md](../../../plans/PRAXIS_SPEC_WRITING_STANDARD.md)
+- Canonical standard: [docs/PRAXIS_SPEC_WRITING_STANDARD.md](../../../docs/PRAXIS_SPEC_WRITING_STANDARD.md)
 - Template: [assets/spec-writing-standard-template.md](assets/spec-writing-standard-template.md)
 - Validator: `scripts/check_spec_standard.py`

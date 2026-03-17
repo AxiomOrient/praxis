@@ -17,29 +17,60 @@
   } from "lucide-svelte";
   import Card from "./lib/components/Card.svelte";
   import DeckCard from "./lib/components/DeckCard.svelte";
-  import GuideEditor from "./lib/components/GuideEditor.svelte";
+  import AgentFileEditor from "./lib/components/AgentFileEditor.svelte";
   import InstalledSourceCard from "./lib/components/InstalledSourceCard.svelte";
   import StarterSourceCard from "./lib/components/StarterSourceCard.svelte";
-  import { doctor, guidance, guidanceWrite, inspect, install, plan, remove, sync, update, workspace } from "./lib/api";
+  import {
+    benchmarkRun,
+    createSkillDraft,
+    doctor,
+    forkCreateDraft,
+    guidance,
+    guidanceWrite,
+    inspect,
+    install,
+    plan,
+    previewCreateDraft,
+    promoteCreateDraft,
+    remove,
+    submitHumanReview,
+    sync,
+    update,
+    updateCreateDraft,
+    workspace,
+  } from "./lib/api";
   import type {
     Agent,
+    AgentFileSlot,
+    AgentFileSnapshot,
+    AgentFileTemplate,
     AppliedInstall,
+    BenchmarkRunSummary,
     DoctorReport,
-    GuideAsset,
-    GuideKind,
-    GuidanceSnapshot,
+    DraftPreview,
     InstallPlan,
     InstallPayload,
     Scope,
     SkillInfo,
     SourceCatalog,
     SourceRef,
+    WorkspaceSettings,
     WorkspaceSnapshot,
   } from "./lib/types";
   import { LANGUAGE_OPTIONS, loadLocale, saveLocale, translate, type Locale } from "./lib/i18n";
   import { DEFAULT_STARTER_SOURCE, matchStarterSource, STARTER_SOURCES } from "./lib/starterSources";
 
-  const GUIDE_KINDS: GuideKind[] = ["codex-agents", "codex-override", "claude-root", "claude-dot"];
+  const AGENT_FILE_SLOTS: AgentFileSlot[] = [
+    "codex-project-root",
+    "codex-project-override",
+    "codex-user-root",
+    "codex-user-override",
+    "claude-project-root",
+    "claude-project-dot",
+    "claude-user-root",
+    "gemini-project-root",
+    "gemini-user-root",
+  ];
   const STARTER_DECK_IDS = ["core", "starter", "default", "workflow"];
 
   let scope = $state<Scope>("user");
@@ -47,25 +78,39 @@
   let sourceInput = $state(DEFAULT_STARTER_SOURCE.url);
   let catalog = $state<SourceCatalog | null>(null);
   let snapshot = $state<WorkspaceSnapshot | null>(null);
-  let guideSnapshot = $state<GuidanceSnapshot | null>(null);
+  let agentFileSnapshot = $state<AgentFileSnapshot | null>(null);
   let report = $state<DoctorReport | null>(null);
   let planState = $state<InstallPlan | null>(null);
   let selectedDecks = $state<string[]>([]);
   let selectedSkills = $state<string[]>([]);
-  let selectedGuides = $state<string[]>([]);
+  let selectedAgentFileTemplates = $state<string[]>([]);
   let excludedSkills = $state<string[]>([]);
   let targets = $state<Agent[]>(["codex", "claude"]);
   let allSkills = $state(false);
-  let activeTab = $state<"catalog" | "plan" | "installed" | "guides" | "doctor" | "settings">("catalog");
-  let activeGuideKind = $state<GuideKind>("codex-agents");
+  let activeTab = $state<
+    "discover" | "plan" | "library" | "agent-files" | "create" | "benchmarks" | "connections" | "health" | "settings"
+  >("discover");
+  let activeAgentFileSlot = $state<AgentFileSlot>("codex-project-root");
   let deckQuery = $state("");
   let skillQuery = $state("");
-  let guideQuery = $state("");
+  let agentFileTemplateQuery = $state("");
   let busy = $state(false);
   let error = $state<string | null>(null);
   let showAdvancedCatalog = $state(false);
   let showAdvancedWorkspace = $state(false);
   let locale = $state<Locale>(loadLocale());
+  let benchmarkResult = $state<BenchmarkRunSummary | null>(null);
+  let createPreview = $state<DraftPreview | null>(null);
+  let selectedDraftId = $state("");
+  let draftName = $state("");
+  let draftDescription = $state("Draft created from Praxis desktop flow.");
+  let draftPreset = $state("skill");
+  let benchmarkMode = $state("deterministic");
+  let reviewDecision = $state("promote");
+  let reviewNote = $state("");
+  let selectedForkSkill = $state("");
+  let draftEditorPath = $state("SKILL.md");
+  let draftEditorContent = $state("");
 
   function tr(
     key: Parameters<typeof translate>[1],
@@ -94,6 +139,21 @@
     if (value === "ko") return tr("settings.languageKorean");
     if (value === "ja") return tr("settings.languageJapanese");
     return tr("settings.languageEnglish");
+  }
+
+  function defaultTargets(settings?: WorkspaceSettings | null): Agent[] {
+    switch (settings?.target_profile) {
+      case "codex-open-standard":
+        return ["codex"];
+      case "claude-native":
+        return ["claude"];
+      case "gemini-native":
+        return ["gemini"];
+      case "codex-gemini-shared-open-standard":
+        return ["codex", "gemini"];
+      default:
+        return ["codex", "claude"];
+    }
   }
 
   const workspaceReady = $derived.by(() => scope === "user" || Boolean(workspaceRoot.trim()));
@@ -138,7 +198,18 @@
     };
   });
 
-  const activeGuide = $derived.by(() => guideSnapshot?.guides.find((guide) => guide.kind === activeGuideKind) ?? null);
+  const activeAgentFile = $derived.by(
+    () => agentFileSnapshot?.slots.find((slot) => slot.slot === activeAgentFileSlot) ?? null,
+  );
+  const createDrafts = $derived.by(() => snapshot?.create.drafts ?? []);
+  const benchmarkSuites = $derived.by(() => snapshot?.evaluation.suites ?? []);
+  const recentBenchmarkRuns = $derived.by(() => snapshot?.evaluation.recent_runs ?? []);
+  const pendingHumanRuns = $derived.by(() =>
+    recentBenchmarkRuns.filter((run) => run.status === "awaiting_human" && run.mode === "human-review"),
+  );
+  const activeDraftSummary = $derived.by(
+    () => createDrafts.find((draft) => draft.id === selectedDraftId) ?? createDrafts[0] ?? null,
+  );
 
   const starterDeck = $derived.by(() => {
     if (!catalog?.decks.length) return null;
@@ -185,12 +256,12 @@
     });
   });
 
-  const filteredGuides = $derived.by(() => {
-    const query = guideQuery.trim().toLowerCase();
+  const filteredAgentFileTemplates = $derived.by(() => {
+    const query = agentFileTemplateQuery.trim().toLowerCase();
     if (!catalog) return [];
-    if (!query) return catalog.guides;
-    return catalog.guides.filter((guide) => {
-      const haystack = [guide.id, guide.title, guide.description, guide.kind, guide.relative_path]
+    if (!query) return catalog.agent_file_templates;
+    return catalog.agent_file_templates.filter((template) => {
+      const haystack = [template.id, template.title, template.description, template.slots.join(" "), template.relative_path]
         .join(" ")
         .toLowerCase();
       return haystack.includes(query);
@@ -210,7 +281,7 @@
       decks: selectedDecks.length,
       deckSkills: selectedDeckSkillNames.size,
       cards: selectedSkills.length,
-      guides: selectedGuides.length,
+      agentFileTemplates: selectedAgentFileTemplates.length,
       excluded: excludedSkills.length,
       targets: targets.length,
       mode: allSkills ? "all" : "selection",
@@ -218,11 +289,11 @@
   });
 
   const hasExplicitSelection = $derived.by(() => {
-    return allSkills || selectedDecks.length > 0 || selectedSkills.length > 0 || selectedGuides.length > 0;
+    return allSkills || selectedDecks.length > 0 || selectedSkills.length > 0 || selectedAgentFileTemplates.length > 0;
   });
 
   const canRemoveSelection = $derived.by(() => {
-    return selectedDecks.length > 0 || selectedSkills.length > 0 || selectedGuides.length > 0;
+    return selectedDecks.length > 0 || selectedSkills.length > 0 || selectedAgentFileTemplates.length > 0;
   });
 
   const installedRecord = $derived.by(() => {
@@ -253,7 +324,7 @@
       decks: selectedDecks,
       skills: selectedSkills,
       exclude_skills: excludedSkills,
-      guides: selectedGuides,
+      agent_file_templates: selectedAgentFileTemplates,
       targets,
     };
   }
@@ -261,7 +332,7 @@
   function resetSelection(nextTargets: Agent[] = ["codex", "claude"]) {
     selectedDecks = [];
     selectedSkills = [];
-    selectedGuides = [];
+    selectedAgentFileTemplates = [];
     excludedSkills = [];
     allSkills = false;
     targets = [...nextTargets];
@@ -272,17 +343,39 @@
     catalog = null;
     planState = null;
     report = null;
+    benchmarkResult = null;
+    selectedForkSkill = "";
     deckQuery = "";
     skillQuery = "";
-    guideQuery = "";
+    agentFileTemplateQuery = "";
     showAdvancedCatalog = false;
-    resetSelection(snapshot?.manifest.settings.default_agents.length ? snapshot.manifest.settings.default_agents : ["codex", "claude"]);
+    resetSelection(defaultTargets(snapshot?.manifest.settings));
   }
 
   function setSourceInput(nextValue: string) {
     if (nextValue === sourceInput) return;
     sourceInput = nextValue;
     clearSourceSelectionState();
+  }
+
+  function hydrateCreatePreview(preview: DraftPreview | null) {
+    createPreview = preview;
+    if (!preview) {
+      draftEditorPath = "";
+      draftEditorContent = "";
+      return;
+    }
+    selectedDraftId = preview.draft.id;
+    const activeDocument =
+      preview.documents.find((document) => document.path === draftEditorPath) ?? preview.documents[0] ?? null;
+    draftEditorPath = activeDocument?.path ?? "";
+    draftEditorContent = activeDocument?.content ?? "";
+  }
+
+  function handleDraftDocumentSelect(path: string) {
+    draftEditorPath = path;
+    const nextDocument = createPreview?.documents.find((document) => document.path === path) ?? null;
+    draftEditorContent = nextDocument?.content ?? "";
   }
 
   function hydrateSelectionFromInstall(sourceId: string | null) {
@@ -293,16 +386,14 @@
 
     const install = snapshot.manifest.installs.find((item) => item.id === sourceId);
     if (!install) {
-      resetSelection(
-        snapshot.manifest.settings.default_agents.length ? snapshot.manifest.settings.default_agents : ["codex", "claude"],
-      );
+      resetSelection(defaultTargets(snapshot.manifest.settings));
       return;
     }
 
     allSkills = install.selection.all;
     selectedDecks = [...install.selection.decks];
     selectedSkills = [...install.selection.skills];
-    selectedGuides = [...install.selection.guides];
+    selectedAgentFileTemplates = [...install.selection.agent_file_templates];
     excludedSkills = [...install.selection.exclude_skills];
     targets = [...install.targets];
     planState = null;
@@ -311,7 +402,7 @@
   async function loadWorkspace(nextScope: Scope) {
     if (nextScope === "repo" && !workspaceRoot.trim()) {
       snapshot = null;
-      guideSnapshot = null;
+      agentFileSnapshot = null;
       report = null;
       return;
     }
@@ -320,7 +411,10 @@
     error = null;
     try {
       snapshot = await workspace(nextScope, nextScope === "repo" ? workspaceRoot.trim() : null);
-      guideSnapshot = await guidance(nextScope, nextScope === "repo" ? workspaceRoot.trim() : null);
+      agentFileSnapshot = await guidance(nextScope, nextScope === "repo" ? workspaceRoot.trim() : null);
+      if (!selectedDraftId && snapshot.create.drafts[0]) {
+        selectedDraftId = snapshot.create.drafts[0].id;
+      }
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
@@ -353,11 +447,12 @@
     report = null;
     try {
       catalog = await inspect(scope, sourceInput, currentRoot());
+      selectedForkSkill = catalog.skills[0]?.name ?? "";
       hydrateSelectionFromInstall(catalog.source_id);
       deckQuery = "";
       skillQuery = "";
-      guideQuery = "";
-      activeTab = "catalog";
+      agentFileTemplateQuery = "";
+      activeTab = "discover";
     } catch (err) {
       error = String(err);
     } finally {
@@ -385,9 +480,9 @@
     error = null;
     try {
       snapshot = await install(installPayload());
-      guideSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await guidance(scope, currentRoot());
       hydrateSelectionFromInstall(catalog.source_id);
-      activeTab = "installed";
+      activeTab = "library";
     } catch (err) {
       error = String(err);
     } finally {
@@ -405,14 +500,14 @@
         source: sourceInput,
         decks: [],
         skills: [],
-        guides: [],
+        agent_file_templates: [],
         remove_all: true,
       });
-      guideSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await guidance(scope, currentRoot());
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
-      activeTab = "installed";
+      activeTab = "library";
     } catch (err) {
       error = String(err);
     } finally {
@@ -425,7 +520,7 @@
     error = null;
     try {
       snapshot = await sync(scope, currentRoot());
-      guideSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await guidance(scope, currentRoot());
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
@@ -441,7 +536,7 @@
     error = null;
     try {
       snapshot = await update(scope, currentRoot());
-      guideSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await guidance(scope, currentRoot());
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
@@ -457,7 +552,7 @@
     error = null;
     try {
       report = await doctor(scope, currentRoot());
-      activeTab = "doctor";
+      activeTab = "health";
     } catch (err) {
       error = String(err);
     } finally {
@@ -465,14 +560,14 @@
     }
   }
 
-  async function handleGuideSave(kind: GuideKind, content: string) {
+  async function handleAgentFileSave(slot: AgentFileSlot, content: string) {
     busy = true;
     error = null;
     try {
-      guideSnapshot = await guidanceWrite({
+      agentFileSnapshot = await guidanceWrite({
         scope,
         root: currentRoot(),
-        kind,
+        slot,
         content,
       });
     } catch (err) {
@@ -482,11 +577,184 @@
     }
   }
 
-  function applyRecommendedGuides() {
-    if (!catalog?.recipe?.recommended_guides?.length) return;
-    for (const guideId of catalog.recipe.recommended_guides) {
-      if (!selectedGuides.includes(guideId)) {
-        selectedGuides = [...selectedGuides, guideId];
+  async function handleBenchmarkRun(suiteId: string) {
+    busy = true;
+    error = null;
+    try {
+      benchmarkResult = await benchmarkRun({
+        scope,
+        root: currentRoot(),
+        suite_id: suiteId,
+        source: sourceInput,
+        mode: benchmarkMode,
+      });
+      snapshot = await workspace(scope, currentRoot());
+      activeTab = "benchmarks";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleCreateDraft() {
+    if (!draftName.trim()) {
+      error = tr("create.errorNameRequired");
+      return;
+    }
+
+    busy = true;
+    error = null;
+    try {
+      const nextPreview = await createSkillDraft({
+        scope,
+        root: currentRoot(),
+        name: draftName.trim(),
+        description: draftDescription.trim(),
+        preset: draftPreset,
+      });
+      hydrateCreatePreview(nextPreview);
+      snapshot = await workspace(scope, currentRoot());
+      activeTab = "create";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handlePreviewDraft(draftId: string) {
+    busy = true;
+    error = null;
+    try {
+      const nextPreview = await previewCreateDraft({
+        scope,
+        root: currentRoot(),
+        draft_id: draftId,
+      });
+      hydrateCreatePreview(nextPreview);
+      activeTab = "create";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handlePromoteDraft(draftId: string) {
+    busy = true;
+    error = null;
+    try {
+      let destinationRoot: string | null = null;
+      if (scope !== "repo") {
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          title: tr("create.choosePromotionRoot"),
+        });
+        if (!picked || Array.isArray(picked)) {
+          busy = false;
+          return;
+        }
+        destinationRoot = picked;
+      }
+
+      const nextPreview = await promoteCreateDraft({
+        scope,
+        root: currentRoot(),
+        draft_id: draftId,
+        destination_root: destinationRoot,
+      });
+      hydrateCreatePreview(nextPreview);
+      snapshot = await workspace(scope, currentRoot());
+      selectedDraftId = draftId;
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleForkDraft() {
+    if (!catalog || !selectedForkSkill) {
+      error = tr("create.errorForkSelection");
+      return;
+    }
+
+    const sourceSkill = catalog.skills.find((skill) => skill.name === selectedForkSkill);
+
+    busy = true;
+    error = null;
+    try {
+      const nextPreview = await forkCreateDraft({
+        scope,
+        root: currentRoot(),
+        source: sourceInput,
+        skill_name: selectedForkSkill,
+        draft_name: sourceSkill?.display_name ?? sourceSkill?.name ?? selectedForkSkill,
+        description: sourceSkill?.description ?? null,
+      });
+      hydrateCreatePreview(nextPreview);
+      snapshot = await workspace(scope, currentRoot());
+      activeTab = "create";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleSaveDraftDocument() {
+    if (!selectedDraftId || !draftEditorPath) {
+      error = tr("create.errorNoDraftDocument");
+      return;
+    }
+
+    busy = true;
+    error = null;
+    try {
+      const nextPreview = await updateCreateDraft({
+        scope,
+        root: currentRoot(),
+        draft_id: selectedDraftId,
+        relative_path: draftEditorPath,
+        content: draftEditorContent,
+      });
+      hydrateCreatePreview(nextPreview);
+      snapshot = await workspace(scope, currentRoot());
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleSubmitHumanReview(runId: string) {
+    busy = true;
+    error = null;
+    try {
+      benchmarkResult = await submitHumanReview({
+        scope,
+        root: currentRoot(),
+        run_id: runId,
+        decision: reviewDecision,
+        note: reviewNote,
+      });
+      snapshot = await workspace(scope, currentRoot());
+      reviewNote = "";
+      activeTab = "benchmarks";
+    } catch (err) {
+      error = String(err);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function applyRecommendedAgentFileTemplates() {
+    if (!catalog?.recipe?.recommended_agent_file_templates?.length) return;
+    for (const templateId of catalog.recipe.recommended_agent_file_templates) {
+      if (!selectedAgentFileTemplates.includes(templateId)) {
+        selectedAgentFileTemplates = [...selectedAgentFileTemplates, templateId];
       }
     }
     planState = null;
@@ -511,8 +779,11 @@
       }
     }
 
-    if (catalog.recipe?.recommended_guides?.length) {
-      selectedGuides = dedup([...selectedGuides, ...catalog.recipe.recommended_guides]);
+    if (catalog.recipe?.recommended_agent_file_templates?.length) {
+      selectedAgentFileTemplates = dedup([
+        ...selectedAgentFileTemplates,
+        ...catalog.recipe.recommended_agent_file_templates,
+      ]);
     }
 
     planState = null;
@@ -528,8 +799,8 @@
     planState = null;
   }
 
-  function toggleGuide(guide: GuideAsset) {
-    selectedGuides = toggle(selectedGuides, guide.id);
+  function toggleAgentFileTemplate(template: AgentFileTemplate) {
+    selectedAgentFileTemplates = toggle(selectedAgentFileTemplates, template.id);
     planState = null;
   }
 
@@ -557,9 +828,9 @@
         return;
       }
       snapshot = await install(installPayload());
-      guideSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await guidance(scope, currentRoot());
       hydrateSelectionFromInstall(catalog.source_id);
-      activeTab = "installed";
+      activeTab = "library";
     } catch (err) {
       error = String(err);
     } finally {
@@ -575,11 +846,12 @@
     try {
       catalog = await inspect(scope, source, currentRoot());
       sourceInput = source;
+      selectedForkSkill = catalog.skills[0]?.name ?? "";
       hydrateSelectionFromInstall(catalog.source_id);
       deckQuery = "";
       skillQuery = "";
-      guideQuery = "";
-      activeTab = "catalog";
+      agentFileTemplateQuery = "";
+      activeTab = "discover";
     } catch (err) {
       error = String(err);
     } finally {
@@ -627,12 +899,12 @@
         source: sourceInput,
         decks: selectedDecks,
         skills: selectedSkills,
-        guides: selectedGuides,
+        agent_file_templates: selectedAgentFileTemplates,
         remove_all: false,
       });
-      guideSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await guidance(scope, currentRoot());
       hydrateSelectionFromInstall(catalog.source_id);
-      activeTab = "installed";
+      activeTab = "library";
     } catch (err) {
       error = String(err);
     } finally {
@@ -652,19 +924,22 @@
     </div>
 
     <nav class="sidebar-nav">
-      <button class="nav-item" class:active={activeTab === "catalog"} onclick={() => (activeTab = "catalog")}>
+      <button class="nav-item" class:active={activeTab === "discover"} onclick={() => (activeTab = "discover")}>
         <Search size={18} strokeWidth={2.5} /> {tr("nav.catalog")}
       </button>
-      <button class="nav-item" class:active={activeTab === "plan"} onclick={() => (activeTab = "plan")}>
-        <Layers size={18} strokeWidth={2.5} /> {tr("nav.plan")}
-      </button>
-      <button class="nav-item" class:active={activeTab === "installed"} onclick={() => (activeTab = "installed")}>
+      <button class="nav-item" class:active={activeTab === "library"} onclick={() => (activeTab = "library")}>
         <CheckCircle size={18} strokeWidth={2.5} /> {tr("nav.installed")}
       </button>
-      <button class="nav-item" class:active={activeTab === "guides"} onclick={() => (activeTab = "guides")}>
-        <BookOpen size={18} strokeWidth={2.5} /> {tr("nav.guides")}
+      <button class="nav-item" class:active={activeTab === "create"} onclick={() => (activeTab = "create")}>
+        <DownloadCloud size={18} strokeWidth={2.5} /> {tr("nav.create")}
       </button>
-      <button class="nav-item" class:active={activeTab === "doctor"} onclick={() => (activeTab = "doctor")}>
+      <button class="nav-item" class:active={activeTab === "benchmarks"} onclick={() => (activeTab = "benchmarks")}>
+        <BookOpen size={18} strokeWidth={2.5} /> {tr("nav.benchmarks")}
+      </button>
+      <button class="nav-item" class:active={activeTab === "connections"} onclick={() => (activeTab = "connections")}>
+        <ArrowRight size={18} strokeWidth={2.5} /> {tr("nav.connections")}
+      </button>
+      <button class="nav-item" class:active={activeTab === "health"} onclick={() => (activeTab = "health")}>
         <Activity size={18} strokeWidth={2.5} /> {tr("nav.doctor")}
       </button>
       <button class="nav-item" class:active={activeTab === "settings"} onclick={() => (activeTab = "settings")}>
@@ -755,20 +1030,26 @@
   <main class="main">
     <header class="hero">
       <h1>
-        {#if activeTab === "catalog"}{tr("hero.catalog.title")}
+        {#if activeTab === "discover"}{tr("hero.catalog.title")}
         {:else if activeTab === "plan"}{tr("hero.plan.title")}
-        {:else if activeTab === "installed"}{tr("hero.installed.title")}
-        {:else if activeTab === "guides"}{tr("hero.guides.title")}
-        {:else if activeTab === "doctor"}{tr("hero.doctor.title")}
+        {:else if activeTab === "library"}{tr("hero.installed.title")}
+        {:else if activeTab === "agent-files"}{tr("hero.guides.title")}
+        {:else if activeTab === "create"}{tr("hero.create.title")}
+        {:else if activeTab === "benchmarks"}{tr("hero.benchmarks.title")}
+        {:else if activeTab === "connections"}{tr("hero.connections.title")}
+        {:else if activeTab === "health"}{tr("hero.doctor.title")}
         {:else if activeTab === "settings"}{tr("hero.settings.title")}
         {/if}
       </h1>
       <p>
-        {#if activeTab === "catalog"}{tr("hero.catalog.copy")}
+        {#if activeTab === "discover"}{tr("hero.catalog.copy")}
         {:else if activeTab === "plan"}{tr("hero.plan.copy")}
-        {:else if activeTab === "installed"}{tr("hero.installed.copy")}
-        {:else if activeTab === "guides"}{tr("hero.guides.copy")}
-        {:else if activeTab === "doctor"}{tr("hero.doctor.copy")}
+        {:else if activeTab === "library"}{tr("hero.installed.copy")}
+        {:else if activeTab === "agent-files"}{tr("hero.guides.copy")}
+        {:else if activeTab === "create"}{tr("hero.create.copy")}
+        {:else if activeTab === "benchmarks"}{tr("hero.benchmarks.copy")}
+        {:else if activeTab === "connections"}{tr("hero.connections.copy")}
+        {:else if activeTab === "health"}{tr("hero.doctor.copy")}
         {:else if activeTab === "settings"}{tr("hero.settings.copy")}
         {/if}
       </p>
@@ -781,7 +1062,7 @@
     {/if}
 
     <div class="view-container">
-      {#if activeTab === "catalog"}
+      {#if activeTab === "discover"}
         <div in:fade={{ duration: 200, delay: 100 }}>
           {#if catalog}
             <section class="section">
@@ -839,7 +1120,7 @@
                 <div class="summary-box"><span>{tr("catalog.summaryDecks")}</span><strong>{selectionSummary.decks}</strong></div>
                 <div class="summary-box"><span>{tr("catalog.summaryDeckCards")}</span><strong>{selectionSummary.deckSkills}</strong></div>
                 <div class="summary-box"><span>{tr("catalog.summaryManualCards")}</span><strong>{selectionSummary.cards}</strong></div>
-                <div class="summary-box"><span>{tr("catalog.summaryGuideSlots")}</span><strong>{selectionSummary.guides}</strong></div>
+                <div class="summary-box"><span>{tr("catalog.summaryGuideSlots")}</span><strong>{selectionSummary.agentFileTemplates}</strong></div>
               </div>
 
               {#if catalog.recipe || catalog.warnings.length || installedRecord}
@@ -849,8 +1130,8 @@
                       <div>
                         <strong>{catalog.recipe.label}</strong> · {catalog.recipe.description}
                       </div>
-                      {#if catalog.recipe.recommended_guides.length}
-                        <button onclick={applyRecommendedGuides}>{tr("common.useRecommendedGuides")}</button>
+                      {#if catalog.recipe.recommended_agent_file_templates.length}
+                        <button onclick={applyRecommendedAgentFileTemplates}>{tr("common.useRecommendedGuides")}</button>
                       {/if}
                     </div>
                   {/if}
@@ -948,20 +1229,24 @@
               <section class="section">
                 <div class="section-head">
                   <h2>{tr("catalog.guideSlots")}</h2>
-                  <div class="meta">{filteredGuides.length}</div>
+                  <div class="meta">{filteredAgentFileTemplates.length}</div>
                 </div>
-                <input class="search-input" bind:value={guideQuery} placeholder={tr("catalog.searchGuides")} />
+                <input class="search-input" bind:value={agentFileTemplateQuery} placeholder={tr("catalog.searchGuides")} />
                 <div class="guide-slot-list">
-                  {#each filteredGuides as guide}
-                    <button class:selected={selectedGuides.includes(guide.id)} class="guide-slot" onclick={() => toggleGuide(guide)}>
+                  {#each filteredAgentFileTemplates as template}
+                    <button
+                      class:selected={selectedAgentFileTemplates.includes(template.id)}
+                      class="guide-slot"
+                      onclick={() => toggleAgentFileTemplate(template)}
+                    >
                       <div>
-                        <div class="eyebrow">{guide.kind}</div>
-                        <strong>{guide.title}</strong>
-                        <p>{guide.description}</p>
+                        <div class="eyebrow">{template.slots.join(", ")}</div>
+                        <strong>{template.title}</strong>
+                        <p>{template.description}</p>
                       </div>
                       <div class="guide-slot-meta">
-                        <span>{guide.relative_path}</span>
-                        <span>{selectedGuides.includes(guide.id) ? tr("common.selected") : tr("common.optional")}</span>
+                        <span>{template.relative_path}</span>
+                        <span>{selectedAgentFileTemplates.includes(template.id) ? tr("common.selected") : tr("common.optional")}</span>
                       </div>
                     </button>
                   {/each}
@@ -1099,7 +1384,7 @@
                 <div class="summary-box"><span>{tr("plan.totalSkills")}</span><strong>{planState.summary.total_skills}</strong></div>
                 <div class="summary-box"><span>{tr("plan.codexSkills")}</span><strong>{planState.summary.codex_skills}</strong></div>
                 <div class="summary-box"><span>{tr("plan.claudeSkills")}</span><strong>{planState.summary.claude_skills}</strong></div>
-                <div class="summary-box"><span>{tr("plan.guides")}</span><strong>{planState.summary.total_guides}</strong></div>
+                <div class="summary-box"><span>{tr("plan.guides")}</span><strong>{planState.summary.total_agent_file_actions}</strong></div>
               </div>
 
               <div class="receipt-panel">
@@ -1108,7 +1393,7 @@
                 <div class="receipt-row"><span>{tr("plan.targets")}</span><strong>{planState.targets.join(", ")}</strong></div>
                 <div class="receipt-row"><span>{tr("plan.decks")}</span><strong>{planState.selection.decks.join(", ") || tr("common.none")}</strong></div>
                 <div class="receipt-row"><span>{tr("plan.skillCards")}</span><strong>{planState.selection.skills.join(", ") || tr("common.none")}</strong></div>
-                <div class="receipt-row"><span>{tr("plan.guideSlots")}</span><strong>{planState.selection.guides.join(", ") || tr("common.none")}</strong></div>
+                <div class="receipt-row"><span>{tr("plan.guideSlots")}</span><strong>{planState.selection.agent_file_templates.join(", ") || tr("common.none")}</strong></div>
                 <div class="receipt-row"><span>{tr("plan.excluded")}</span><strong>{planState.selection.exclude_skills.join(", ") || tr("common.none")}</strong></div>
               </div>
             </section>
@@ -1172,20 +1457,20 @@
               </div>
             </section>
 
-            {#if planState.guides.length}
+            {#if planState.agent_file_actions.length}
               <section class="section">
                 <div class="section-head">
                   <h2>{tr("plan.guideFileChanges")}</h2>
-                  <div class="meta">{planState.guides.length}</div>
+                  <div class="meta">{planState.agent_file_actions.length}</div>
                 </div>
                 <div class="receipt-panel">
-                  {#each planState.guides as guide}
+                  {#each planState.agent_file_actions as action}
                     <div class="receipt-row stacked">
                       <div>
-                        <span>{guide.kind}</span>
-                        <strong>{guide.title}</strong>
+                        <span>{action.slot}</span>
+                        <strong>{action.title}</strong>
                       </div>
-                      <strong>{guide.target_path}</strong>
+                      <strong>{action.target_path}</strong>
                     </div>
                   {/each}
                 </div>
@@ -1216,13 +1501,13 @@
               <Layers size={48} color="rgba(255,255,255,0.2)" style="margin-bottom: 16px;" />
               <h2>{tr("plan.emptyTitle")}</h2>
               <p>{tr("plan.emptyCopy")}</p>
-              <button onclick={() => (activeTab = "catalog")} style="margin-top: 16px;">{tr("plan.backToCatalog")}</button>
+              <button onclick={() => (activeTab = "discover")} style="margin-top: 16px;">{tr("plan.backToCatalog")}</button>
             </section>
           {/if}
         </div>
       {/if}
 
-      {#if activeTab === "installed"}
+      {#if activeTab === "library"}
         <div in:fade={{ duration: 200, delay: 100 }}>
           <section class="section">
             <div class="section-head">
@@ -1243,16 +1528,16 @@
                       currentSource: tr("installed.currentSource"),
                       emptySelection: tr("installed.emptySelection"),
                       appliedSkills: tr("installed.appliedSkills"),
-                      guideBlocks: tr("installed.guideBlocks"),
+                      agentFileActions: tr("installed.guideBlocks"),
                       bundles: tr("installed.bundles"),
                       reference: tr("installed.reference"),
                       local: tr("common.local"),
                       selectionAll: tr("installed.selectionAll"),
                       selectionDecks: (count) => tr("installed.selectionDecks", { count }),
                       selectionCards: (count) => tr("installed.selectionCards", { count }),
-                      selectionGuides: (count) => tr("installed.selectionGuides", { count }),
+                      selectionAgentFileTemplates: (count) => tr("installed.selectionGuides", { count }),
                       metaExcluded: (items) => tr("installed.metaExcluded", { items }),
-                      metaGuides: (items) => tr("installed.metaGuides", { items }),
+                      metaAgentFileTemplates: (items) => tr("installed.metaGuides", { items }),
                       metaSourceHash: (hash) => tr("installed.metaSourceHash", { hash }),
                     }}
                   />
@@ -1307,34 +1592,34 @@
                 <button disabled={busy} onclick={handleSync}><RefreshCw size={14} /> {tr("common.sync")}</button>
                 <button disabled={busy} onclick={handleUpdate}><RefreshCw size={14} /> {tr("common.update")}</button>
                 <button disabled={busy} onclick={handleDoctor}><Activity size={14} /> {tr("common.doctor")}</button>
-                <button disabled={busy} onclick={() => (activeTab = "guides")}><BookOpen size={14} /> {tr("common.guides")}</button>
+                <button disabled={busy} onclick={() => (activeTab = "agent-files")}><BookOpen size={14} /> {tr("common.guides")}</button>
               </div>
             </section>
           {/if}
         </div>
       {/if}
 
-      {#if activeTab === "guides"}
+      {#if activeTab === "agent-files"}
         <div in:fade={{ duration: 200, delay: 100 }}>
           <section class="section">
             <div class="guide-slot-list" style="margin-bottom: 24px;">
-              {#each GUIDE_KINDS as kind}
-                <button class:selected={activeGuideKind === kind} class="guide-slot" onclick={() => (activeGuideKind = kind)}>
+              {#each AGENT_FILE_SLOTS as slot}
+                <button class:selected={activeAgentFileSlot === slot} class="guide-slot" onclick={() => (activeAgentFileSlot = slot)}>
                   <div>
                     <div class="eyebrow">{tr("guides.slot")}</div>
-                    <strong>{kind}</strong>
-                    <p>{guideSnapshot?.guides.find((guide) => guide.kind === kind)?.target_path ?? tr("guides.noPath")}</p>
+                    <strong>{slot}</strong>
+                    <p>{agentFileSnapshot?.slots.find((item) => item.slot === slot)?.target_path ?? tr("guides.noPath")}</p>
                   </div>
                   <div class="guide-slot-meta">
-                    <span>{activeGuideKind === kind ? tr("common.editing") : tr("common.open")}</span>
+                    <span>{activeAgentFileSlot === slot ? tr("common.editing") : tr("common.open")}</span>
                   </div>
                 </button>
               {/each}
             </div>
-            <GuideEditor
-              guide={activeGuide}
+            <AgentFileEditor
+              slotState={activeAgentFile}
               {busy}
-              onSave={handleGuideSave}
+              onSave={handleAgentFileSave}
               labels={{
                 save: tr("guideEditor.save"),
                 managedBlocks: (count) => tr("guideEditor.managedBlocks", { count }),
@@ -1348,7 +1633,287 @@
         </div>
       {/if}
 
-      {#if activeTab === "doctor"}
+      {#if activeTab === "create"}
+        <div in:fade={{ duration: 200, delay: 100 }}>
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>{tr("create.draftsTitle")}</h2>
+                <p>{tr("create.draftsCopy")}</p>
+              </div>
+            </div>
+
+            <div class="panel stack-panel" style="margin-bottom: 20px;">
+              <div class="field-grid">
+                <label class="stack-field">
+                  <span class="field-label">{tr("create.nameLabel")}</span>
+                  <input class="source-input" bind:value={draftName} placeholder={tr("create.namePlaceholder")} />
+                </label>
+                <label class="stack-field">
+                  <span class="field-label">{tr("create.presetLabel")}</span>
+                  <select class="source-input" bind:value={draftPreset}>
+                    <option value="skill">skill</option>
+                  </select>
+                </label>
+              </div>
+              <label class="stack-field">
+                <span class="field-label">{tr("create.descriptionLabel")}</span>
+                <textarea
+                  class="source-input"
+                  rows="4"
+                  bind:value={draftDescription}
+                  placeholder={tr("create.descriptionPlaceholder")}
+                ></textarea>
+              </label>
+              <div class="button-row">
+                <button class="primary" disabled={busy} onclick={handleCreateDraft}>
+                  <DownloadCloud size={16} /> {tr("create.createDraft")}
+                </button>
+                {#if catalog?.skills.length}
+                  <label class="stack-field inline-select">
+                    <span class="field-label">{tr("create.forkSkillLabel")}</span>
+                    <select class="source-input" bind:value={selectedForkSkill}>
+                      {#each catalog.skills as skill}
+                        <option value={skill.name}>{skill.display_name ?? skill.name}</option>
+                      {/each}
+                    </select>
+                  </label>
+                  <button disabled={busy} onclick={handleForkDraft}>
+                    <Layers size={16} /> {tr("create.forkAction")}
+                  </button>
+                {/if}
+                {#if activeDraftSummary}
+                  <button disabled={busy} onclick={() => handlePreviewDraft(activeDraftSummary.id)}>
+                    {tr("create.refreshPreview")}
+                  </button>
+                {/if}
+              </div>
+            </div>
+
+            {#if createDrafts.length}
+              <div class="list">
+                {#each createDrafts as draft}
+                  <div class:selected-row={selectedDraftId === draft.id} class="check-row info interactive-row">
+                    <strong>{draft.artifact_kind}</strong>
+                    <span>{draft.preset}</span>
+                    <p>{draft.name} · {draft.version_id}</p>
+                    <div class="row-actions">
+                      <p>{tr("create.updatedAt", { value: draft.updated_at })}</p>
+                      <div class="button-row compact">
+                        <button disabled={busy} onclick={() => handlePreviewDraft(draft.id)}>{tr("create.previewAction")}</button>
+                        <button class="primary" disabled={busy} onclick={() => handlePromoteDraft(draft.id)}>
+                          {tr("create.promoteAction")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="empty-inline">
+                <p>{tr("create.emptyCopy")}</p>
+              </div>
+            {/if}
+
+            {#if createPreview}
+              <div class="panel stack-panel" style="margin-top: 20px;">
+                <div class="section-heading">
+                  <div>
+                    <h2>{tr("create.previewTitle")}</h2>
+                    <p>{tr("create.previewCopy")}</p>
+                  </div>
+                </div>
+                <div class="stat">
+                  <span>{tr("create.previewDraft")}</span>
+                  <strong>{createPreview.draft.name}</strong>
+                </div>
+                <div class="stat">
+                  <span>{tr("create.promotionTarget")}</span>
+                  <strong>{createPreview.promotion_target}</strong>
+                </div>
+                {#if createPreview.documents.length}
+                  <div class="field-grid">
+                    <label class="stack-field">
+                      <span class="field-label">{tr("create.documentLabel")}</span>
+                      <select
+                        class="source-input"
+                        bind:value={draftEditorPath}
+                        onchange={(event) => handleDraftDocumentSelect((event.currentTarget as HTMLSelectElement).value)}
+                      >
+                        {#each createPreview.documents as document}
+                          <option value={document.path}>{document.path}</option>
+                        {/each}
+                      </select>
+                    </label>
+                    <div class="stack-field">
+                      <span class="field-label">{tr("create.documentActions")}</span>
+                      <div class="button-row">
+                        <button disabled={busy} onclick={handleSaveDraftDocument}>
+                          {tr("create.saveDocument")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <textarea
+                    class="editor-textarea"
+                    bind:value={draftEditorContent}
+                    rows="14"
+                  ></textarea>
+                {/if}
+                <div class="list">
+                  {#each createPreview.files as entry}
+                    <div class="check-row info">
+                      <strong>{entry.entry_kind}</strong>
+                      <span>{createPreview.draft.version_id}</span>
+                      <p>{entry.path}</p>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </section>
+        </div>
+      {/if}
+
+      {#if activeTab === "benchmarks"}
+        <div in:fade={{ duration: 200, delay: 100 }}>
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>{tr("benchmarks.suitesTitle")}</h2>
+                <p>{tr("benchmarks.suitesCopy")}</p>
+              </div>
+            </div>
+            <div class="panel stack-panel" style="margin-bottom: 20px;">
+              <div class="stat">
+                <span>{tr("benchmarks.currentSource")}</span>
+                <strong>{sourceInput}</strong>
+              </div>
+              <label class="stack-field">
+                <span class="field-label">{tr("benchmarks.modeLabel")}</span>
+                <select class="source-input" bind:value={benchmarkMode}>
+                  <option value="deterministic">{tr("benchmarks.modeDeterministic")}</option>
+                  <option value="human-review">{tr("benchmarks.modeHumanReview")}</option>
+                </select>
+              </label>
+              <div class="button-row">
+                {#each benchmarkSuites as suite}
+                  <button class="primary" disabled={busy} onclick={() => handleBenchmarkRun(suite.id)}>
+                    <BookOpen size={16} /> {tr("benchmarks.runSuite", { title: suite.title })}
+                  </button>
+                {/each}
+              </div>
+            </div>
+            <div class="list">
+              {#each benchmarkSuites as suite}
+                <div class="check-row info">
+                  <strong>{suite.title}</strong>
+                  <span>{suite.suite_kind}</span>
+                  <p>{suite.description}</p>
+                  <p>{tr("benchmarks.caseCount", { count: suite.case_count })}</p>
+                </div>
+              {/each}
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>{tr("benchmarks.recentRunsTitle")}</h2>
+                <p>{tr("benchmarks.recentRunsCopy")}</p>
+              </div>
+            </div>
+
+            {#if recentBenchmarkRuns.length}
+              <div class="list">
+                {#each recentBenchmarkRuns as run}
+                  <div class="check-row info">
+                    <strong>{run.suite_id}</strong>
+                    <span>{run.recommendation}</span>
+                    <p>{run.summary}</p>
+                    <p>{tr("benchmarks.score", { score: run.score.toFixed(1) })}</p>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="empty-inline">
+                <p>{tr("benchmarks.noRunsYet")}</p>
+              </div>
+            {/if}
+          </section>
+
+          {#if pendingHumanRuns.length}
+            <section class="section">
+              <div class="section-heading">
+                <div>
+                  <h2>{tr("benchmarks.reviewQueueTitle")}</h2>
+                  <p>{tr("benchmarks.reviewQueueCopy")}</p>
+                </div>
+              </div>
+              <div class="panel stack-panel">
+                <label class="stack-field">
+                  <span class="field-label">{tr("benchmarks.reviewDecisionLabel")}</span>
+                  <select class="source-input" bind:value={reviewDecision}>
+                    <option value="promote">{tr("benchmarks.decisionPromote")}</option>
+                    <option value="hold">{tr("benchmarks.decisionHold")}</option>
+                    <option value="reject">{tr("benchmarks.decisionReject")}</option>
+                    <option value="manual_review">{tr("benchmarks.decisionManualReview")}</option>
+                  </select>
+                </label>
+                <label class="stack-field">
+                  <span class="field-label">{tr("benchmarks.reviewNoteLabel")}</span>
+                  <textarea class="source-input" rows="4" bind:value={reviewNote}></textarea>
+                </label>
+                <div class="list">
+                  {#each pendingHumanRuns as run}
+                    <div class="check-row info">
+                      <strong>{run.status}</strong>
+                      <span>{run.suite_id}</span>
+                      <p>{run.summary}</p>
+                      <div class="button-row compact">
+                        <button class="primary" disabled={busy} onclick={() => handleSubmitHumanReview(run.id)}>
+                          {tr("benchmarks.submitReview")}
+                        </button>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            </section>
+          {/if}
+
+          {#if benchmarkResult}
+            <section class="section">
+              <div class="section-heading">
+                <div>
+                  <h2>{tr("benchmarks.latestRunTitle")}</h2>
+                  <p>{tr("benchmarks.latestRunCopy")}</p>
+                </div>
+              </div>
+              <div class="list">
+                <div class="check-row info">
+                  <strong>{benchmarkResult.status}</strong>
+                  <span>{benchmarkResult.recommendation}</span>
+                  <p>{benchmarkResult.summary}</p>
+                  <p>{tr("benchmarks.score", { score: benchmarkResult.score.toFixed(1) })}</p>
+                </div>
+              </div>
+            </section>
+          {/if}
+        </div>
+      {/if}
+
+      {#if activeTab === "connections"}
+        <div in:fade={{ duration: 200, delay: 100 }}>
+          <section class="section empty">
+            <ArrowRight size={48} color="rgba(255,255,255,0.2)" style="margin-bottom: 16px;" />
+            <h2>{tr("connections.emptyTitle")}</h2>
+            <p>{tr("connections.emptyCopy")}</p>
+          </section>
+        </div>
+      {/if}
+
+      {#if activeTab === "health"}
         <div in:fade={{ duration: 200, delay: 100 }}>
           <section class="section">
             <div class="alert note" style="align-items: center; justify-content: space-between; margin-bottom: 32px;">

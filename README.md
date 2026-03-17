@@ -3,7 +3,7 @@
 **praxis** is a GitHub-first **management plane** for external agent artifacts and persistent agent files.
 
 It is not a skill-pack repository.  
-It discovers external repositories, scans for `SKILL.md` and runtime instruction files, and applies only the selected artifacts into Codex, Claude Code, and Gemini CLI targets with a **copy-only**, **lock-driven**, **no-stale-leftovers** model.
+It discovers external repositories, scans for `SKILL.md` and runtime instruction files, and applies only the selected artifacts into Codex and Claude Code runtime targets with a **copy-only**, **lock-driven**, **no-stale-leftovers** model. Gemini CLI remains an explicit integration target until its runtime-file contract is promoted.
 
 The canonical documentation set lives under `specs/` and is structured as a split, Symphony-style product specification package.
 
@@ -11,9 +11,15 @@ The canonical product target is:
 
 - inspect external GitHub and local sources
 - install / update / remove / sync selected skills and decks
-- manage persistent agent files as first-class runtime artifacts
+- manage persistent agent files as contextual runtime workspace outputs
 - create and adapt skills, decks, and agent-file templates
 - benchmark and promote candidate artifacts
+
+The final shell converges in phases:
+
+- primary surfaces: Discover, Library, Create, Benchmarks
+- utility surfaces: Connections, Health, Settings
+- contextual flows: Plan preview, deck views, agent-file editor
 
 ## Product position
 
@@ -53,7 +59,7 @@ That keeps the product simple while still giving it a strong card-deck UX.
 5. **Agent files are composed deterministically, never clobbered blindly.**
 6. **State is deterministic. Remove means remove.**
 7. **Inspect → plan → apply is the primary interaction.**
-8. **Codex, Claude Code, and Gemini CLI are first-class targets.**
+8. **Codex and Claude Code are first-class runtime-file targets. Gemini CLI remains an integration target until promoted.**
 
 ## Workspace layout
 
@@ -71,7 +77,7 @@ That keeps the product simple while still giving it a strong card-deck UX.
 <repo>/AGENT.md          # optional compatibility alias
 <repo>/CLAUDE.md
 <repo>/.claude/CLAUDE.md
-<repo>/GEMINI.md
+<repo>/GEMINI.md      # reserved for explicit Gemini integration work
 ```
 
 ### User scope (macOS first)
@@ -86,7 +92,7 @@ That keeps the product simple while still giving it a strong card-deck UX.
 ~/.codex/AGENTS.md
 ~/.codex/AGENTS.override.md
 ~/.claude/CLAUDE.md
-~/.gemini/GEMINI.md
+~/.gemini/GEMINI.md   # reserved for explicit Gemini integration work
 ```
 
 ## Quick start

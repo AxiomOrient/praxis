@@ -1,4 +1,7 @@
 pub mod agent_files;
+pub mod create;
+pub mod evaluation;
+pub mod library;
 pub mod manager;
 pub mod model;
 pub mod parser;
@@ -7,8 +10,15 @@ pub mod source;
 pub mod workspace;
 
 pub use agent_files::{read_agent_file_state, write_agent_file_user_content};
+pub use create::{ensure_create_store, read_create_snapshot};
+pub use evaluation::{
+    ensure_evaluation_store, read_evaluation_snapshot, run_benchmark, submit_human_review,
+};
+pub use library::{ensure_library_store, read_library_store_snapshot, sync_catalog_to_library};
 pub use manager::{
-    doctor_workspace, init_workspace, inspect_source_input, install_source, list_workspace,
-    plan_install, remove_from_source, sync_workspace, update_workspace,
+    benchmark_source, create_draft, doctor_workspace, fork_draft, init_workspace,
+    inspect_source_input, install_source, list_workspace, plan_install, preview_draft,
+    promote_draft, remove_from_source, submit_human_review as submit_human_review_action,
+    sync_workspace, update_draft, update_workspace,
 };
 pub use model::*;

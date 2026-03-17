@@ -8,7 +8,7 @@ External Sources
   -> Selection + Plan
   -> Reconciler
   -> Agent Runtime Targets
-  -> Library + Agent Files + Benchmarks
+  -> Library + Benchmarks
 ```
 
 Praxis has one center of gravity:
@@ -22,7 +22,6 @@ Praxis has one center of gravity:
 - **Discover** — inspect sources and begin install flows
 - **Library** — manage everything already known, installed, or drafted
 - **Create** — create or import new artifacts
-- **Agent Files** — manage persistent instruction files by runtime and scope
 - **Benchmarks** — compare candidate vs current artifacts
 
 ### Utility surfaces
@@ -42,7 +41,7 @@ Paste source -> Inspect -> Choose -> Preview Plan -> Apply -> Land in Library
 ### 3.2 Agent-file loop
 
 ```text
-Open Agent Files -> Choose runtime/slot -> Preview effective file -> Edit user block / select templates -> Apply
+Open Library or Workspace Context -> Choose runtime/slot -> Preview effective file -> Edit user block / select templates -> Apply
 ```
 
 ### 3.3 Creation loop
@@ -89,7 +88,7 @@ Maps the selected artifacts into Codex, Claude Code, and Gemini CLI according to
 
 ### 4.6 Observation layer
 
-Shows the result through Library, Agent Files, Health, and Benchmarks.
+Shows the result through Library, contextual Agent Files views, Health, and Benchmarks.
 
 ## 5. Final object system
 

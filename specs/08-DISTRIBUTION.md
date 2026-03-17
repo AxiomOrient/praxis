@@ -67,11 +67,11 @@ Important boundary:
 
 ### 3.4 Project Structure and Key Paths
 
-- [08-DISTRIBUTION.md](/Users/axient/repository/praxis/specs/08-DISTRIBUTION.md) - release boundary contract
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) - canonical product contract
-- [scripts/package-source.sh](/Users/axient/repository/praxis/scripts/package-source.sh) - source packaging entry
-- [scripts/release-cli.sh](/Users/axient/repository/praxis/scripts/release-cli.sh) - CLI release entry
-- [scripts/release-macos.sh](/Users/axient/repository/praxis/scripts/release-macos.sh) - macOS release entry
+- [08-DISTRIBUTION.md](08-DISTRIBUTION.md) - release boundary contract
+- [03-SPEC.md](03-SPEC.md) - canonical product contract
+- [scripts/package-source.sh](../scripts/package-source.sh) - source packaging entry
+- [scripts/release-cli.sh](../scripts/release-cli.sh) - CLI release entry
+- [scripts/release-macos.sh](../scripts/release-macos.sh) - macOS release entry
 
 ## 4. Core Domain Model
 
@@ -230,8 +230,8 @@ Release operations are invoked through repository packaging scripts and release 
 
 Always provide:
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md)
-- [08-DISTRIBUTION.md](/Users/axient/repository/praxis/specs/08-DISTRIBUTION.md)
+- [03-SPEC.md](03-SPEC.md)
+- [08-DISTRIBUTION.md](08-DISTRIBUTION.md)
 
 ### 12.2 Task-Specific Context
 
@@ -312,9 +312,9 @@ Only include:
 
 ### 17.1 Commands
 
-- `sh /Users/axient/repository/praxis/scripts/package-source.sh`
-- `sh /Users/axient/repository/praxis/scripts/release-cli.sh`
-- `sh /Users/axient/repository/praxis/scripts/release-macos.sh`
+- `sh scripts/package-source.sh`
+- `sh scripts/release-cli.sh`
+- `sh scripts/release-macos.sh`
 
 ### 17.2 Validation Matrix
 

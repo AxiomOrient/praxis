@@ -1296,13 +1296,12 @@ If `ok = false`, `errors` must contain stable error codes.
 Final desktop IA:
 
 1. Discover
-2. My Skills
+2. Library
 3. Create
-4. Decks
-5. Benchmark Lab
-6. Health
-7. Connections
-8. Settings
+4. Benchmark Lab
+5. Health
+6. Connections
+7. Settings
 
 ## 17.2 Global workspace context
 
@@ -1311,7 +1310,7 @@ Desktop must expose a global workspace selector:
 - User Workspace
 - Repo Workspace (selected folder)
 
-Install state, plan preview, guide outputs, doctor results are all scoped by this workspace context.
+Install state, plan preview, agent-file outputs, and doctor results are all scoped by this workspace context.
 
 ## 17.3 Plan review UX
 
@@ -1324,9 +1323,9 @@ The old dedicated Plan tab is replaced by a review surface/drawer/modal that can
 
 The plan itself remains a first-class concept; only navigation placement changes.
 
-## 17.4 Guides UX
+## 17.4 Agent Files UX
 
-Guides are not a top-level nav item.
+Agent Files are not a top-level nav item.
 They appear in:
 
 - workspace settings
@@ -1450,9 +1449,10 @@ Migration must never delete runtime-owned files before a successful v2 plan/appl
 - workspace integration using imported snapshots
 
 ### Phase 2 — UI re-architecture
-- Discover / My Skills / Decks / workspace context
+- Discover / Library / workspace context
 - plan review surface
 - source/library detail views
+- contextual deck and agent-file views
 
 ### Phase 3 — Authoring
 - create/fork/augment

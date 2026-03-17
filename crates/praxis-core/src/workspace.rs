@@ -12,6 +12,15 @@ pub struct WorkspacePaths {
     pub scope: Scope,
     pub repo_root: Option<PathBuf>,
     pub state_dir: PathBuf,
+    pub db_dir: PathBuf,
+    pub library_dir: PathBuf,
+    pub library_db_path: PathBuf,
+    pub library_imports_dir: PathBuf,
+    pub library_drafts_dir: PathBuf,
+    pub library_skills_dir: PathBuf,
+    pub library_decks_dir: PathBuf,
+    pub library_agent_files_dir: PathBuf,
+    pub library_bundles_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub manifest_path: PathBuf,
     pub lock_path: PathBuf,
@@ -51,6 +60,15 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
             Ok(WorkspacePaths {
                 scope: Scope::Repo,
                 repo_root: Some(repo_root.clone()),
+                db_dir: state_dir.join("db"),
+                library_dir: state_dir.join("library"),
+                library_db_path: state_dir.join("db").join("praxis.db"),
+                library_imports_dir: state_dir.join("library").join("imports"),
+                library_drafts_dir: state_dir.join("library").join("drafts"),
+                library_skills_dir: state_dir.join("library").join("skills"),
+                library_decks_dir: state_dir.join("library").join("decks"),
+                library_agent_files_dir: state_dir.join("library").join("agent-files"),
+                library_bundles_dir: state_dir.join("library").join("bundles"),
                 manifest_path: state_dir.join("manifest.toml"),
                 lock_path: state_dir.join("lock.json"),
                 cache_dir: state_dir.join("cache"),
@@ -79,6 +97,15 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
             Ok(WorkspacePaths {
                 scope: Scope::User,
                 repo_root: None,
+                db_dir: state_dir.join("db"),
+                library_dir: state_dir.join("library"),
+                library_db_path: state_dir.join("db").join("praxis.db"),
+                library_imports_dir: state_dir.join("library").join("imports"),
+                library_drafts_dir: state_dir.join("library").join("drafts"),
+                library_skills_dir: state_dir.join("library").join("skills"),
+                library_decks_dir: state_dir.join("library").join("decks"),
+                library_agent_files_dir: state_dir.join("library").join("agent-files"),
+                library_bundles_dir: state_dir.join("library").join("bundles"),
                 manifest_path: state_dir.join("manifest.toml"),
                 lock_path: state_dir.join("lock.json"),
                 cache_dir: state_dir.join("cache"),
@@ -104,9 +131,18 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
 
 pub fn ensure_workspace(paths: &WorkspacePaths) -> Result<()> {
     fs::create_dir_all(&paths.state_dir)?;
+    fs::create_dir_all(&paths.db_dir)?;
+    fs::create_dir_all(&paths.library_dir)?;
+    fs::create_dir_all(&paths.library_imports_dir)?;
+    fs::create_dir_all(&paths.library_drafts_dir)?;
+    fs::create_dir_all(&paths.library_skills_dir)?;
+    fs::create_dir_all(&paths.library_decks_dir)?;
+    fs::create_dir_all(&paths.library_agent_files_dir)?;
+    fs::create_dir_all(&paths.library_bundles_dir)?;
     fs::create_dir_all(&paths.cache_dir)?;
     fs::create_dir_all(&paths.codex_skills_dir)?;
     fs::create_dir_all(&paths.claude_skills_dir)?;
+    fs::create_dir_all(&paths.gemini_skills_dir)?;
 
     for path in [
         &paths.codex_project_agents_path,
@@ -205,6 +241,7 @@ pub fn target_paths(paths: &WorkspacePaths, _settings: &WorkspaceSettings) -> Ta
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     fn sample_paths() -> WorkspacePaths {
         let repo_root = PathBuf::from("/tmp/praxis");
@@ -213,6 +250,15 @@ mod tests {
             scope: Scope::Repo,
             repo_root: Some(repo_root.clone()),
             state_dir: repo_root.join(".praxis"),
+            db_dir: repo_root.join(".praxis").join("db"),
+            library_dir: repo_root.join(".praxis").join("library"),
+            library_db_path: repo_root.join(".praxis").join("db").join("praxis.db"),
+            library_imports_dir: repo_root.join(".praxis").join("library").join("imports"),
+            library_drafts_dir: repo_root.join(".praxis").join("library").join("drafts"),
+            library_skills_dir: repo_root.join(".praxis").join("library").join("skills"),
+            library_decks_dir: repo_root.join(".praxis").join("library").join("decks"),
+            library_agent_files_dir: repo_root.join(".praxis").join("library").join("agent-files"),
+            library_bundles_dir: repo_root.join(".praxis").join("library").join("bundles"),
             cache_dir: repo_root.join(".praxis").join("cache"),
             manifest_path: repo_root.join(".praxis").join("manifest.toml"),
             lock_path: repo_root.join(".praxis").join("lock.json"),
@@ -244,5 +290,59 @@ mod tests {
             agent_file_slot_path(&paths, &AgentFileSlot::GeminiProjectRoot),
             PathBuf::from("/tmp/praxis/GEMINI.md")
         );
+    }
+
+    #[test]
+    fn ensure_workspace_creates_all_declared_skill_roots() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path().join("repo");
+        fs::create_dir_all(&repo_root).expect("create repo root");
+
+        let state_dir = repo_root.join(".praxis");
+        let paths = WorkspacePaths {
+            scope: Scope::Repo,
+            repo_root: Some(repo_root.clone()),
+            state_dir: state_dir.clone(),
+            db_dir: state_dir.join("db"),
+            library_dir: state_dir.join("library"),
+            library_db_path: state_dir.join("db").join("praxis.db"),
+            library_imports_dir: state_dir.join("library").join("imports"),
+            library_drafts_dir: state_dir.join("library").join("drafts"),
+            library_skills_dir: state_dir.join("library").join("skills"),
+            library_decks_dir: state_dir.join("library").join("decks"),
+            library_agent_files_dir: state_dir.join("library").join("agent-files"),
+            library_bundles_dir: state_dir.join("library").join("bundles"),
+            cache_dir: state_dir.join("cache"),
+            manifest_path: state_dir.join("manifest.toml"),
+            lock_path: state_dir.join("lock.json"),
+            codex_skills_dir: repo_root.join(".agents").join("skills"),
+            claude_skills_dir: repo_root.join(".claude").join("skills"),
+            gemini_skills_dir: repo_root.join(".gemini").join("skills"),
+            codex_user_agents_path: repo_root.join(".codex").join("AGENTS.md"),
+            codex_user_override_path: repo_root.join(".codex").join("AGENTS.override.md"),
+            codex_project_agents_path: repo_root.join("AGENTS.md"),
+            codex_project_override_path: repo_root.join("AGENTS.override.md"),
+            codex_agent_alias_path: repo_root.join("AGENT.md"),
+            claude_user_root_path: repo_root.join(".claude-home").join("CLAUDE.md"),
+            claude_project_root_path: repo_root.join("CLAUDE.md"),
+            claude_project_dot_path: repo_root.join(".claude").join("CLAUDE.md"),
+            gemini_user_root_path: repo_root.join(".gemini-home").join("GEMINI.md"),
+            gemini_project_root_path: repo_root.join("GEMINI.md"),
+        };
+
+        ensure_workspace(&paths).expect("ensure workspace");
+
+        assert!(paths.codex_skills_dir.is_dir());
+        assert!(paths.claude_skills_dir.is_dir());
+        assert!(paths.gemini_skills_dir.is_dir());
+        assert!(paths.db_dir.is_dir());
+        assert!(paths.library_imports_dir.is_dir());
+        assert!(paths.library_drafts_dir.is_dir());
+        assert!(paths.library_skills_dir.is_dir());
+        assert!(paths.library_decks_dir.is_dir());
+        assert!(paths.library_agent_files_dir.is_dir());
+        assert!(paths.library_bundles_dir.is_dir());
+        assert!(paths.manifest_path.is_file());
+        assert!(paths.lock_path.is_file());
     }
 }

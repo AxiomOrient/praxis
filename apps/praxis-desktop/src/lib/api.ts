@@ -1,10 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentFileSnapshot,
+  AgentFileWritePayload,
+  BenchmarkRunPayload,
+  BenchmarkRunSummary,
+  CreateDraftPayload,
+  DraftUpdatePayload,
   DoctorReport,
-  GuidanceSnapshot,
-  GuidanceWritePayload,
+  DraftPreview,
+  DraftPreviewPayload,
+  ForkDraftPayload,
+  HumanReviewPayload,
   InstallPayload,
   InstallPlan,
+  PromoteDraftPayload,
   RemovePayload,
   Scope,
   SourceCatalog,
@@ -43,10 +52,38 @@ export async function doctor(scope: Scope, root?: string | null): Promise<Doctor
   return invoke("doctor", { scope, root: root ?? null });
 }
 
-export async function guidance(scope: Scope, root?: string | null): Promise<GuidanceSnapshot> {
+export async function guidance(scope: Scope, root?: string | null): Promise<AgentFileSnapshot> {
   return invoke("guidance", { scope, root: root ?? null });
 }
 
-export async function guidanceWrite(payload: GuidanceWritePayload): Promise<GuidanceSnapshot> {
+export async function guidanceWrite(payload: AgentFileWritePayload): Promise<AgentFileSnapshot> {
   return invoke("guidance_write", { payload });
+}
+
+export async function benchmarkRun(payload: BenchmarkRunPayload): Promise<BenchmarkRunSummary> {
+  return invoke("benchmark_run", { payload });
+}
+
+export async function submitHumanReview(payload: HumanReviewPayload): Promise<BenchmarkRunSummary> {
+  return invoke("submit_human_review", { payload });
+}
+
+export async function createSkillDraft(payload: CreateDraftPayload): Promise<DraftPreview> {
+  return invoke("create_skill_draft", { payload });
+}
+
+export async function previewCreateDraft(payload: DraftPreviewPayload): Promise<DraftPreview> {
+  return invoke("preview_create_draft", { payload });
+}
+
+export async function promoteCreateDraft(payload: PromoteDraftPayload): Promise<DraftPreview> {
+  return invoke("promote_create_draft", { payload });
+}
+
+export async function forkCreateDraft(payload: ForkDraftPayload): Promise<DraftPreview> {
+  return invoke("fork_create_draft", { payload });
+}
+
+export async function updateCreateDraft(payload: DraftUpdatePayload): Promise<DraftPreview> {
+  return invoke("update_create_draft", { payload });
 }

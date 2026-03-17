@@ -71,10 +71,10 @@ Important boundary:
 
 ### 3.4 Project Structure and Key Paths
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) - canonical product contract
-- [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md) - repository-facing contract
-- [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md) - slot ids referenced by templates
-- [06-CREATION-SYSTEM.md](/Users/axient/repository/praxis/specs/06-CREATION-SYSTEM.md) - creation flows that emit these manifests
+- [03-SPEC.md](03-SPEC.md) - canonical product contract
+- [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md) - repository-facing contract
+- [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md) - slot ids referenced by templates
+- [06-CREATION-SYSTEM.md](06-CREATION-SYSTEM.md) - creation flows that emit these manifests
 
 ## 4. Core Domain Model
 
@@ -304,8 +304,8 @@ Generic discovery remains the baseline execution path.
 
 Always provide:
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md)
-- [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md)
+- [03-SPEC.md](03-SPEC.md)
+- [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md)
 
 ### 12.2 Task-Specific Context
 

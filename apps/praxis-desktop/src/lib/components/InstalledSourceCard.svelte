@@ -9,16 +9,16 @@
       currentSource: string;
       emptySelection: string;
       appliedSkills: string;
-      guideBlocks: string;
+      agentFileActions: string;
       bundles: string;
       reference: string;
       local: string;
       selectionAll: string;
       selectionDecks: (count: number) => string;
       selectionCards: (count: number) => string;
-      selectionGuides: (count: number) => string;
+      selectionAgentFileTemplates: (count: number) => string;
       metaExcluded: (items: string) => string;
-      metaGuides: (items: string) => string;
+      metaAgentFileTemplates: (items: string) => string;
       metaSourceHash: (hash: string) => string;
     };
   }
@@ -31,7 +31,9 @@
     if (selection.all) parts.push(labels.selectionAll);
     if (selection.decks.length) parts.push(labels.selectionDecks(selection.decks.length));
     if (selection.skills.length) parts.push(labels.selectionCards(selection.skills.length));
-    if (selection.guides.length) parts.push(labels.selectionGuides(selection.guides.length));
+    if (selection.agent_file_templates.length) {
+      parts.push(labels.selectionAgentFileTemplates(selection.agent_file_templates.length));
+    }
     return parts.join(" · ");
   });
 
@@ -68,8 +70,8 @@
         <strong>{applied?.skills.length ?? 0}</strong>
       </div>
       <div>
-        <span>{labels.guideBlocks}</span>
-        <strong>{applied?.guides.length ?? 0}</strong>
+        <span>{labels.agentFileActions}</span>
+        <strong>{applied?.agent_file_actions.length ?? 0}</strong>
       </div>
       <div>
         <span>{labels.bundles}</span>
@@ -85,8 +87,8 @@
       <div class="shelf-meta">{labels.metaExcluded(install.selection.exclude_skills.join(", "))}</div>
     {/if}
 
-    {#if install.selection.guides.length}
-      <div class="shelf-meta">{labels.metaGuides(install.selection.guides.join(", "))}</div>
+    {#if install.selection.agent_file_templates.length}
+      <div class="shelf-meta">{labels.metaAgentFileTemplates(install.selection.agent_file_templates.join(", "))}</div>
     {/if}
 
     {#if applied?.source_hash}

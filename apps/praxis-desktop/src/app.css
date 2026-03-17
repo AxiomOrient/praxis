@@ -316,6 +316,22 @@ button.primary:hover:not(:disabled) {
   font-size: 13px;
 }
 
+.stack-panel {
+  gap: 16px;
+}
+
+.stack-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr);
+  gap: 16px;
+}
+
 button.wide {
   width: 100%;
 }
@@ -691,6 +707,32 @@ button.wide {
   gap: 12px;
 }
 
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-heading h2 {
+  margin: 0 0 6px;
+}
+
+.section-heading p,
+.empty-inline p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.empty-inline {
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .install-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -703,7 +745,7 @@ button.wide {
 
 .check-row {
   display: grid;
-  grid-template-columns: 80px 160px 1fr;
+  grid-template-columns: 80px 160px minmax(0, 1fr);
   align-items: baseline;
   padding: 16px;
   border-bottom: 1px solid var(--border);
@@ -738,6 +780,21 @@ button.wide {
   font-size: 14px;
   color: var(--text);
   line-height: 1.5;
+}
+
+.interactive-row {
+  cursor: pointer;
+}
+
+.selected-row {
+  background: rgba(41, 151, 255, 0.08);
+}
+
+.row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 form {
@@ -1336,6 +1393,11 @@ pre.code-block {
 
   .launchpad-stage,
   .starter-showcase {
+    grid-template-columns: 1fr;
+  }
+
+  .field-grid,
+  .check-row {
     grid-template-columns: 1fr;
   }
 }

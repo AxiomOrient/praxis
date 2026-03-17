@@ -1,10 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use praxis_core::{
-    doctor_workspace, init_workspace, inspect_source_input, install_source, list_workspace,
-    plan_install, read_agent_file_state, remove_from_source, sync_workspace, update_workspace,
-    write_agent_file_user_content, Agent, AgentFileSlot, AgentFileWriteRequest, InstallRequest,
-    RemoveRequest, Scope,
+    benchmark_source, create_draft, doctor_workspace, fork_draft, init_workspace,
+    inspect_source_input, install_source, list_workspace, plan_install, preview_draft,
+    promote_draft, read_agent_file_state, remove_from_source, submit_human_review_action,
+    sync_workspace, update_draft, update_workspace, write_agent_file_user_content, Agent,
+    AgentFileSlot, AgentFileWriteRequest, BenchmarkRunRequest, CreateDraftRequest,
+    DraftPreviewRequest, DraftUpdateRequest, ForkDraftRequest, HumanReviewRequest,
+    InstallRequest, PromoteDraftRequest, RemoveRequest, Scope,
 };
 
 #[derive(Debug, Parser)]
@@ -135,6 +138,14 @@ enum Command {
     Sync,
     Update,
     Doctor,
+    Benchmark {
+        #[command(subcommand)]
+        command: BenchmarkCommand,
+    },
+    Create {
+        #[command(subcommand)]
+        command: CreateCommand,
+    },
     Guidance {
         #[command(subcommand)]
         command: GuidanceCommand,
@@ -156,6 +167,56 @@ enum GuidanceCommand {
         content: Option<String>,
     },
     Paths,
+}
+
+#[derive(Debug, Subcommand)]
+enum BenchmarkCommand {
+    Run {
+        suite: String,
+        source: String,
+        #[arg(long, default_value = "deterministic")]
+        mode: String,
+    },
+    Review {
+        run_id: String,
+        #[arg(long)]
+        decision: String,
+        #[arg(long, default_value = "")]
+        note: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum CreateCommand {
+    Skill {
+        name: String,
+        #[arg(long, default_value = "Draft created from Praxis create flow.")]
+        description: String,
+        #[arg(long, default_value = "skill")]
+        preset: String,
+    },
+    Preview {
+        draft_id: String,
+    },
+    Promote {
+        draft_id: String,
+        #[arg(long)]
+        destination_root: Option<String>,
+    },
+    Fork {
+        source: String,
+        skill_name: String,
+        #[arg(long)]
+        draft_name: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    Write {
+        draft_id: String,
+        path: String,
+        #[arg(long)]
+        content: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -231,6 +292,77 @@ fn main() -> Result<()> {
         Command::Sync => print_json(&sync_workspace(scope, cli.root)?),
         Command::Update => print_json(&update_workspace(scope, cli.root)?),
         Command::Doctor => print_json(&doctor_workspace(scope, cli.root)?),
+        Command::Benchmark { command } => match command {
+            BenchmarkCommand::Run { suite, source, mode } => print_json(&benchmark_source(
+                BenchmarkRunRequest {
+                    scope,
+                    root: cli.root,
+                    suite_id: suite,
+                    source,
+                    mode: Some(mode),
+                },
+            )?),
+            BenchmarkCommand::Review { run_id, decision, note } => print_json(
+                &submit_human_review_action(HumanReviewRequest {
+                    scope,
+                    root: cli.root,
+                    run_id,
+                    decision,
+                    note,
+                })?,
+            ),
+        },
+        Command::Create { command } => match command {
+            CreateCommand::Skill {
+                name,
+                description,
+                preset,
+            } => print_json(&create_draft(CreateDraftRequest {
+                scope,
+                root: cli.root,
+                name,
+                description,
+                preset,
+            })?),
+            CreateCommand::Preview { draft_id } => print_json(&preview_draft(DraftPreviewRequest {
+                scope,
+                root: cli.root,
+                draft_id,
+            })?),
+            CreateCommand::Promote {
+                draft_id,
+                destination_root,
+            } => print_json(&promote_draft(PromoteDraftRequest {
+                scope,
+                root: cli.root,
+                draft_id,
+                destination_root,
+            })?),
+            CreateCommand::Fork {
+                source,
+                skill_name,
+                draft_name,
+                description,
+            } => print_json(&fork_draft(ForkDraftRequest {
+                scope,
+                root: cli.root,
+                source,
+                skill_name,
+                draft_name,
+                description,
+            })?),
+            CreateCommand::Write {
+                draft_id,
+                path,
+                content,
+            } => print_json(&update_draft(DraftUpdateRequest {
+                scope,
+                root: cli.root,
+                draft_id,
+                relative_path: path,
+                content,
+            })?),
+        },
         Command::Guidance { command } => match command {
             GuidanceCommand::Show { slot } => {
                 let snapshot = read_agent_file_state(scope, cli.root)?;

@@ -1,9 +1,8 @@
 version = 1
 
 [settings]
-default_agents = ["codex", "claude"]
-write_agent_md_alias = true
-claude_project_guide_location = "root"
+target_profile = "multi-runtime-default"
+write_codex_agent_alias = true
 
 [[installs]]
 id = "github:AxiomOrient/composable-skills@default#root"
@@ -19,7 +18,7 @@ all = false
 decks = ["workflow", "debug", "build"]
 skills = []
 exclude_skills = ["gemini"]
-guides = ["codex"]
+agent_file_templates = ["codex"]
 
 [[installs]]
 id = "github:garrytan/gstack@default#root"
@@ -35,4 +34,4 @@ all = false
 decks = ["workflow"]
 skills = ["browse"]
 exclude_skills = []
-guides = ["claude-root"]
+agent_file_templates = ["claude-root"]

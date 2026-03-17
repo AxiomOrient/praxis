@@ -78,16 +78,16 @@ Important boundary:
 
 ### 3.3 External Dependencies
 
-- repository contract rules from [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md)
-- runtime slot rules from [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md)
+- repository contract rules from [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md)
+- runtime slot rules from [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md)
 - local filesystem access for drafts and previews
 
 ### 3.4 Project Structure and Key Paths
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) - canonical product contract
-- [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md) - emitted repository contract shapes
-- [06-CREATION-SYSTEM.md](/Users/axient/repository/praxis/specs/06-CREATION-SYSTEM.md) - creation contract
-- [07-UX-IA.md](/Users/axient/repository/praxis/specs/07-UX-IA.md) - Create surface behavior
+- [03-SPEC.md](03-SPEC.md) - canonical product contract
+- [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md) - emitted repository contract shapes
+- [06-CREATION-SYSTEM.md](06-CREATION-SYSTEM.md) - creation contract
+- [07-UX-IA.md](07-UX-IA.md) - Create surface behavior
 
 ## 4. Core Domain Model
 
@@ -300,9 +300,9 @@ Preview is mandatory before write.
 
 Always provide:
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md)
-- [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md)
-- [06-CREATION-SYSTEM.md](/Users/axient/repository/praxis/specs/06-CREATION-SYSTEM.md)
+- [03-SPEC.md](03-SPEC.md)
+- [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md)
+- [06-CREATION-SYSTEM.md](06-CREATION-SYSTEM.md)
 
 ### 12.2 Task-Specific Context
 

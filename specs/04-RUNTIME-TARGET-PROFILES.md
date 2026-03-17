@@ -77,10 +77,10 @@ Important boundary:
 
 ### 3.4 Project Structure and Key Paths
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) - canonical product contract
-- [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md) - runtime mapping contract
-- [07-UX-IA.md](/Users/axient/repository/praxis/specs/07-UX-IA.md) - UI surfaces that expose runtime targets
-- [06-CREATION-SYSTEM.md](/Users/axient/repository/praxis/specs/06-CREATION-SYSTEM.md) - presets that emit runtime-aware artifacts
+- [03-SPEC.md](03-SPEC.md) - canonical product contract
+- [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md) - runtime mapping contract
+- [07-UX-IA.md](07-UX-IA.md) - UI surfaces that expose runtime targets
+- [06-CREATION-SYSTEM.md](06-CREATION-SYSTEM.md) - presets that emit runtime-aware artifacts
 
 ## 4. Core Domain Model
 
@@ -302,8 +302,8 @@ The desktop app may present friendly labels, but CLI/core ids remain authoritati
 
 Always provide:
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md)
-- [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md)
+- [03-SPEC.md](03-SPEC.md)
+- [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md)
 
 ### 12.2 Task-Specific Context
 

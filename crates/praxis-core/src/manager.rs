@@ -5,11 +5,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::agent_files::{apply_agent_files, hash_text, DesiredAgentFileBlock};
+use crate::create::{
+    create_skill_draft as persist_create_skill_draft, fork_skill_draft as persist_fork_skill_draft,
+    preview_draft as persist_preview_draft, promote_draft as persist_promote_draft,
+    read_create_snapshot, update_draft_file as persist_update_draft_file,
+};
+use crate::evaluation::{
+    read_evaluation_snapshot, run_benchmark as persist_benchmark_run,
+    submit_human_review as persist_submit_human_review,
+};
+use crate::library::{read_library_store_snapshot, sync_catalog_to_library};
 use crate::model::{
     Agent, AgentFileTemplate, AppliedAgentFileAction, AppliedBundle, AppliedInstall, AppliedSkill,
-    DoctorCheck, DoctorReport, InstallPlan, InstallRequest, PlanSummary, PlannedAgentFileAction,
-    PlannedBundle, PlannedSkill, RemoveRequest, Scope, SkillInfo, SourceCatalog, SourceInstall,
-    SourceRef, WorkspaceLock, WorkspaceManifest, WorkspaceSnapshot,
+    BenchmarkRunRequest, BenchmarkRunSummary, CreateDraftRequest, DraftPreview,
+    DraftPreviewRequest, DraftUpdateRequest, DoctorCheck, DoctorReport, ForkDraftRequest,
+    HumanReviewRequest, InstallPlan, InstallRequest, PlanSummary, PlannedAgentFileAction,
+    PlannedBundle, PlannedSkill, PromoteDraftRequest, RemoveRequest, Scope, SkillInfo,
+    SourceCatalog, SourceInstall, SourceRef, TargetProfile, WorkspaceLock, WorkspaceManifest,
+    WorkspaceSnapshot,
 };
 use crate::parser::{canonical_source_id, parse_source_input};
 use crate::source::{hash_directory, scan_source, should_skip_dir, source_cache_key};
@@ -73,6 +86,9 @@ pub fn list_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
     let lock = load_lock(&paths.lock_path)?;
     Ok(WorkspaceSnapshot {
         targets: target_paths(&paths, &manifest.settings),
+        library: read_library_store_snapshot(&paths)?,
+        evaluation: read_evaluation_snapshot(&paths)?,
+        create: read_create_snapshot(&paths)?,
         manifest,
         lock,
         warnings: Vec::new(),
@@ -87,7 +103,9 @@ pub fn inspect_source_input(
     let paths = resolve_workspace_paths(scope, root)?;
     ensure_workspace(&paths)?;
     let source = parse_source_input(source_input)?;
-    scan_source(&source, &paths.cache_dir)
+    let catalog = scan_source(&source, &paths.cache_dir)?;
+    sync_catalog_to_library(&paths, &catalog, "manual")?;
+    Ok(catalog)
 }
 
 pub fn plan_install(req: InstallRequest) -> Result<InstallPlan> {
@@ -97,7 +115,7 @@ pub fn plan_install(req: InstallRequest) -> Result<InstallPlan> {
     let manifest = load_manifest(&paths.manifest_path)?;
     let old_lock = load_lock(&paths.lock_path)?;
     let source = parse_source_input(&req.source)?;
-    let install = build_install_record(&manifest, source, &req);
+    let install = build_install_record(&manifest, source, &req)?;
 
     let artifacts = collect_install_artifacts(&paths, &manifest, &install)?;
 
@@ -130,7 +148,7 @@ pub fn install_source(req: InstallRequest) -> Result<WorkspaceSnapshot> {
 
     let mut manifest = load_manifest(&paths.manifest_path)?;
     let source = parse_source_input(&req.source)?;
-    let next_install = build_install_record(&manifest, source, &req);
+    let next_install = build_install_record(&manifest, source, &req)?;
 
     upsert_install(&mut manifest, next_install);
     save_manifest(&paths.manifest_path, &manifest)?;
@@ -201,6 +219,10 @@ pub fn sync_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
         let mut artifacts = collect_install_artifacts(&paths, &manifest, install)
             .with_context(|| format!("failed to scan source '{}'", install.id))?;
 
+        sync_catalog_to_library(&paths, &artifacts.catalog, "compat-install").with_context(
+            || format!("failed to sync library metadata for '{}'", install.id),
+        )?;
+
         desired_skills.append(&mut artifacts.desired_skills);
         desired_bundles.append(&mut artifacts.desired_bundles);
         desired_agent_file_blocks.append(&mut artifacts.desired_agent_file_blocks);
@@ -225,6 +247,9 @@ pub fn sync_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
 
     Ok(WorkspaceSnapshot {
         targets: target_paths(&paths, &manifest.settings),
+        library: read_library_store_snapshot(&paths)?,
+        evaluation: read_evaluation_snapshot(&paths)?,
+        create: read_create_snapshot(&paths)?,
         manifest,
         lock: new_lock,
         warnings,
@@ -233,6 +258,64 @@ pub fn sync_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSna
 
 pub fn update_workspace(scope: Scope, root: Option<String>) -> Result<WorkspaceSnapshot> {
     sync_workspace(scope, root)
+}
+
+pub fn benchmark_source(req: BenchmarkRunRequest) -> Result<BenchmarkRunSummary> {
+    let paths = resolve_workspace_paths(req.scope.clone(), req.root.clone())?;
+    ensure_workspace(&paths)?;
+
+    let manifest = load_manifest(&paths.manifest_path)?;
+    let source = parse_source_input(&req.source)?;
+    let catalog = scan_source(&source, &paths.cache_dir)?;
+    let baseline_source_id = manifest.installs.first().map(|install| install.id.as_str());
+    let mode = req.mode.as_deref().unwrap_or("deterministic");
+
+    persist_benchmark_run(&paths, &req.suite_id, &catalog, baseline_source_id, mode)
+}
+
+pub fn submit_human_review(req: HumanReviewRequest) -> Result<BenchmarkRunSummary> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_submit_human_review(&paths, &req.run_id, &req.decision, &req.note)
+}
+
+pub fn create_draft(req: CreateDraftRequest) -> Result<DraftPreview> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_create_skill_draft(&paths, &req.name, &req.description, &req.preset)
+}
+
+pub fn preview_draft(req: DraftPreviewRequest) -> Result<DraftPreview> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_preview_draft(&paths, &req.draft_id)
+}
+
+pub fn promote_draft(req: PromoteDraftRequest) -> Result<DraftPreview> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_promote_draft(&paths, &req.draft_id, req.destination_root.as_deref())
+}
+
+pub fn fork_draft(req: ForkDraftRequest) -> Result<DraftPreview> {
+    let paths = resolve_workspace_paths(req.scope.clone(), req.root.clone())?;
+    ensure_workspace(&paths)?;
+
+    let source = parse_source_input(&req.source)?;
+    let catalog = scan_source(&source, &paths.cache_dir)?;
+    persist_fork_skill_draft(
+        &paths,
+        &catalog,
+        &req.skill_name,
+        req.draft_name.as_deref(),
+        req.description.as_deref(),
+    )
+}
+
+pub fn update_draft(req: DraftUpdateRequest) -> Result<DraftPreview> {
+    let paths = resolve_workspace_paths(req.scope, req.root)?;
+    ensure_workspace(&paths)?;
+    persist_update_draft_file(&paths, &req.draft_id, &req.relative_path, &req.content)
 }
 
 pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorReport> {
@@ -246,8 +329,25 @@ pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorRepo
     let mut planned_skills = Vec::new();
     let mut planned_bundles = Vec::new();
 
+    if let Err(err) = validate_runtime_file_targets(&manifest.settings.target_profile, &[]) {
+        checks.push(DoctorCheck {
+            level: "error".to_string(),
+            code: "invalid-target-profile".to_string(),
+            message: err.to_string(),
+        });
+    }
+
     let mut ids = BTreeSet::new();
     for install in &manifest.installs {
+        if let Err(err) = validate_runtime_file_targets(&manifest.settings.target_profile, &install.targets)
+        {
+            checks.push(DoctorCheck {
+                level: "error".to_string(),
+                code: "invalid-runtime-target".to_string(),
+                message: format!("install '{}': {}", install.id, err),
+            });
+        }
+
         if !ids.insert(install.id.clone()) {
             checks.push(DoctorCheck {
                 level: "error".to_string(),
@@ -386,16 +486,16 @@ fn build_install_record(
     manifest: &WorkspaceManifest,
     source: SourceRef,
     req: &InstallRequest,
-) -> SourceInstall {
+) -> Result<SourceInstall> {
     let source_id = canonical_source_id(&source);
-    let normalized_targets = normalize_targets(req.targets.clone(), manifest);
+    let normalized_targets = normalize_targets(req.targets.clone(), manifest)?;
     let selection_is_empty = req.decks.is_empty()
         && req.skills.is_empty()
         && req.exclude_skills.is_empty()
         && req.agent_file_templates.is_empty();
     let implied_all = req.all || selection_is_empty;
 
-    SourceInstall {
+    Ok(SourceInstall {
         id: source_id,
         source,
         targets: normalized_targets,
@@ -406,7 +506,7 @@ fn build_install_record(
             exclude_skills: sort_dedup(req.exclude_skills.clone()),
             agent_file_templates: sort_dedup(req.agent_file_templates.clone()),
         },
-    }
+    })
 }
 
 fn upsert_install(manifest: &mut WorkspaceManifest, next_install: SourceInstall) {
@@ -673,11 +773,32 @@ fn build_install_plan(
     }
 }
 
-fn normalize_targets(targets: Vec<Agent>, _manifest: &WorkspaceManifest) -> Vec<Agent> {
-    if targets.is_empty() {
-        return sort_dedup_agents(vec![Agent::Codex, Agent::Claude]);
+fn normalize_targets(targets: Vec<Agent>, manifest: &WorkspaceManifest) -> Result<Vec<Agent>> {
+    let normalized = if targets.is_empty() {
+        sort_dedup_agents(manifest.settings.target_profile.default_targets())
+    } else {
+        sort_dedup_agents(targets)
+    };
+
+    validate_runtime_file_targets(&manifest.settings.target_profile, &normalized)?;
+    Ok(normalized)
+}
+
+fn validate_runtime_file_targets(profile: &TargetProfile, targets: &[Agent]) -> Result<()> {
+    if profile.references_gemini_runtime_targets() {
+        bail!(
+            "target profile '{}' references Gemini runtime-file targets, but Gemini remains an integration target until promoted",
+            profile.as_str()
+        );
     }
-    sort_dedup_agents(targets)
+
+    if targets.iter().any(|target| *target == Agent::Gemini) {
+        bail!(
+            "Gemini runtime-file targets are not supported yet; Gemini remains an integration target until promoted"
+        );
+    }
+
+    Ok(())
 }
 
 fn resolve_selection(catalog: &SourceCatalog, install: &SourceInstall) -> Result<Vec<String>> {
@@ -1150,7 +1271,7 @@ mod tests {
     use super::*;
     use crate::agent_files::DesiredAgentFileBlock;
     use crate::model::{
-        AgentFileSlot, AgentFileTemplate, AgentFileTemplateOrigin, InstallSelection,
+        AgentFileSlot, AgentFileTemplate, AgentFileTemplateOrigin, InstallSelection, TargetProfile,
     };
     use tempfile::tempdir;
 
@@ -1354,5 +1475,49 @@ mod tests {
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0].id, "claude-project-root");
         assert_eq!(selected[1].id, "codex-project-root");
+    }
+
+    #[test]
+    fn normalize_targets_defaults_from_target_profile() {
+        let manifest = WorkspaceManifest {
+            version: 1,
+            settings: crate::model::WorkspaceSettings {
+                target_profile: TargetProfile::ClaudeNative,
+                write_codex_agent_alias: true,
+            },
+            installs: Vec::new(),
+        };
+
+        let targets = normalize_targets(Vec::new(), &manifest).expect("normalize targets");
+        assert_eq!(targets, vec![Agent::Claude]);
+    }
+
+    #[test]
+    fn normalize_targets_rejects_explicit_gemini_runtime_target() {
+        let manifest = WorkspaceManifest::default();
+
+        let err = normalize_targets(vec![Agent::Gemini], &manifest).expect_err("gemini rejected");
+        assert!(
+            err.to_string()
+                .contains("Gemini runtime-file targets are not supported yet")
+        );
+    }
+
+    #[test]
+    fn normalize_targets_rejects_profile_that_references_gemini_runtime_targets() {
+        let manifest = WorkspaceManifest {
+            version: 1,
+            settings: crate::model::WorkspaceSettings {
+                target_profile: TargetProfile::GeminiNative,
+                write_codex_agent_alias: true,
+            },
+            installs: Vec::new(),
+        };
+
+        let err = normalize_targets(Vec::new(), &manifest).expect_err("profile rejected");
+        assert!(
+            err.to_string()
+                .contains("references Gemini runtime-file targets")
+        );
     }
 }

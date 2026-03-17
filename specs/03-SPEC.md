@@ -109,13 +109,13 @@ Important boundary:
 
 ### 3.4 Project Structure and Key Paths
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) — canonical product contract
-- [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md) — runtime mapping rules
-- [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md) — source and repository contract details
-- [06-CREATION-SYSTEM.md](/Users/axient/repository/praxis/specs/06-CREATION-SYSTEM.md) — creation and draft workflow contracts
-- [07-UX-IA.md](/Users/axient/repository/praxis/specs/07-UX-IA.md) — surface model and IA
-- [08-DISTRIBUTION.md](/Users/axient/repository/praxis/specs/08-DISTRIBUTION.md) — release boundary
-- [apps/praxis-desktop/](/Users/axient/repository/praxis/apps/praxis-desktop) — current desktop implementation surface
+- [03-SPEC.md](03-SPEC.md) — canonical product contract
+- [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md) — runtime mapping rules
+- [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md) — source and repository contract details
+- [06-CREATION-SYSTEM.md](06-CREATION-SYSTEM.md) — creation and draft workflow contracts
+- [07-UX-IA.md](07-UX-IA.md) — surface model and IA
+- [08-DISTRIBUTION.md](08-DISTRIBUTION.md) — release boundary
+- [apps/praxis-desktop/](../apps/praxis-desktop) — current desktop implementation surface
 
 ## 4. Core Domain Model
 
@@ -484,13 +484,13 @@ For each integration, Praxis must keep vendor-native semantics explicit rather t
 
 Always provide:
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) for the canonical contract
+- [03-SPEC.md](03-SPEC.md) for the canonical contract
 - the specific companion spec that matches the task domain:
-  - runtime mapping -> [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md)
-  - source contracts -> [05-REPOSITORY-CONTRACTS.md](/Users/axient/repository/praxis/specs/05-REPOSITORY-CONTRACTS.md)
-  - creation/drafts -> [06-CREATION-SYSTEM.md](/Users/axient/repository/praxis/specs/06-CREATION-SYSTEM.md)
-  - UX/surfaces -> [07-UX-IA.md](/Users/axient/repository/praxis/specs/07-UX-IA.md)
-  - release boundary -> [08-DISTRIBUTION.md](/Users/axient/repository/praxis/specs/08-DISTRIBUTION.md)
+  - runtime mapping -> [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md)
+  - source contracts -> [05-REPOSITORY-CONTRACTS.md](05-REPOSITORY-CONTRACTS.md)
+  - creation/drafts -> [06-CREATION-SYSTEM.md](06-CREATION-SYSTEM.md)
+  - UX/surfaces -> [07-UX-IA.md](07-UX-IA.md)
+  - release boundary -> [08-DISTRIBUTION.md](08-DISTRIBUTION.md)
 
 ### 12.2 Task-Specific Context
 
@@ -626,7 +626,7 @@ Do not dump unrelated companion specs into every prompt.
 
 ### 17.3 Acceptance and Conformance Gates
 
-- the canonical spec must pass `python3 /Users/axient/repository/praxis/.agents/skills/spec-writing-standard/scripts/check_spec_standard.py /Users/axient/repository/praxis/specs/03-SPEC.md`
+- the canonical spec must pass `python3 .agents/skills/spec-writing-standard/scripts/check_spec_standard.py specs/03-SPEC.md`
 - companion docs must not contradict the contracts defined here
 - CLI and desktop surfaces must describe the same operational consequences
 - destructive operations must be blocked when ownership is ambiguous

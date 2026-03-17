@@ -19,7 +19,7 @@ Important boundary:
 ### 2.1 Goals
 
 - expose source discovery and inspection
-- expose My Skills and Decks as distinct top-level surfaces
+- expose Library as the top-level management surface for installed, imported, and draft artifacts
 - expose Create as a first-class surface
 - expose benchmark, health, and connection evidence
 - keep install, remove, and compose flows legible before mutation
@@ -40,25 +40,22 @@ Important boundary:
 2. `Discover`
    - source inspection and selection entry
 
-3. `My Skills`
-   - installed, imported, draft, augmented, outdated, and recommended skill views
+3. `Library`
+   - installed, imported, draft, augmented, outdated, and workspace-output views
 
 4. `Create`
    - artifact creation and import entry
 
-5. `Decks`
-   - declared, synthesized, and manual collection views
-
-6. `Benchmark Lab`
+5. `Benchmark Lab`
    - candidate vs current comparison and promotion evidence
 
-7. `Connections`
+6. `Connections`
    - runtime detection and source access status
 
-8. `Health`
+7. `Health`
    - drift, collisions, stale ownership, and invalid contract visibility
 
-9. `Settings`
+8. `Settings`
    - defaults, workspace settings, and advanced compatibility toggles
 
 ### 3.2 Abstraction Levels
@@ -67,7 +64,7 @@ Important boundary:
    - top-level destinations
 
 2. `Surface Layer`
-   - Discover, My Skills, Create, Decks, Benchmark Lab
+   - Discover, Library, Create, Benchmark Lab
 
 3. `Utility Layer`
    - Health, Connections, Settings
@@ -76,20 +73,20 @@ Important boundary:
    - user workspace or repo workspace selection
 
 5. `Flow Layer`
-   - install, remove, create, composition, benchmark, promotion
+   - install, remove, create, deck review, agent-file composition, benchmark, promotion
 
 ### 3.3 External Dependencies
 
 - CLI/core contracts exposed by the product
-- runtime target rules from [04-RUNTIME-TARGET-PROFILES.md](/Users/axient/repository/praxis/specs/04-RUNTIME-TARGET-PROFILES.md)
-- library and planner state from [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md)
+- runtime target rules from [04-RUNTIME-TARGET-PROFILES.md](04-RUNTIME-TARGET-PROFILES.md)
+- library and planner state from [03-SPEC.md](03-SPEC.md)
 
 ### 3.4 Project Structure and Key Paths
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md) - canonical product contract
-- [07-UX-IA.md](/Users/axient/repository/praxis/specs/07-UX-IA.md) - UI and IA contract
-- [apps/praxis-desktop/src/App.svelte](/Users/axient/repository/praxis/apps/praxis-desktop/src/App.svelte) - current desktop entry
-- [apps/praxis-desktop/src/lib/components/](/Users/axient/repository/praxis/apps/praxis-desktop/src/lib/components) - current desktop component surface
+- [03-SPEC.md](03-SPEC.md) - canonical product contract
+- [07-UX-IA.md](07-UX-IA.md) - UI and IA contract
+- [apps/praxis-desktop/src/App.svelte](../apps/praxis-desktop/src/App.svelte) - current desktop entry
+- [apps/praxis-desktop/src/lib/components/](../apps/praxis-desktop/src/lib/components) - current desktop component surface
 
 ## 4. Core Domain Model
 
@@ -121,7 +118,7 @@ Fields:
 - `primary_actions[]`
 
 Lifecycle:
-Rendered in Discover, My Skills, and Decks.
+Rendered in Discover and Library contextual views.
 
 #### 4.1.3 FlowState
 
@@ -140,7 +137,7 @@ Transitions through inspect, plan, apply, or create workflows.
 #### 4.1.4 FilterState
 
 Definition:
-Named view over My Skills, Decks, or other surfaces.
+Named view over Library or other surfaces.
 
 Fields:
 
@@ -153,9 +150,9 @@ Selected by the user and re-evaluated as data changes.
 
 ### 4.2 Stable Identifiers and Normalization Rules
 
-- primary surface names are stable: Discover, My Skills, Create, Decks, Benchmark Lab
+- primary surface names are stable: Discover, Library, Create, Benchmark Lab
 - utility surface names are stable: Health, Connections, Settings
-- `Installed`, `Imported`, and `Draft` are mutually exclusive primary presence filters in My Skills
+- `Installed`, `Imported`, and `Draft` are mutually exclusive primary presence filters in Library
 - additional state such as `outdated`, `invalid`, or `benchmarked` appears as additive badges, not replacement presence states
 
 ## 5. Domain Contract
@@ -165,9 +162,8 @@ Selected by the user and re-evaluated as data changes.
 Primary surfaces are:
 
 - Discover
-- My Skills
+- Library
 - Create
-- Decks
 - Benchmark Lab
 
 Utility surfaces are:
@@ -176,8 +172,8 @@ Utility surfaces are:
 - Connections
 - Settings
 
-Guides are not a top-level surface.
-Guide outputs appear in workspace settings, plan or apply review, and installed-detail surfaces.
+Agent Files are not a top-level surface.
+Agent-file outputs appear in workspace settings, plan or apply review, and Library/workspace-detail surfaces.
 
 The desktop shell must expose a global workspace context selector:
 
@@ -188,7 +184,6 @@ Rejected top-level names include:
 
 - Catalog
 - Guides
-- Library
 - Agent Files
 - Benchmarks
 - Doctor
@@ -208,10 +203,10 @@ UI defaults may come from:
 
 The UI must validate:
 
-- selected filters map to real My Skills or Deck states
+- selected filters map to real Library states
 - plan previews exist before apply is confirmed
 - workspace context is explicit before workspace-scoped mutation
-- guide outputs are previewable from workspace settings or review surfaces
+- agent-file outputs are previewable from workspace settings or review surfaces
 
 ## 7. Lifecycle or State Model
 
@@ -232,8 +227,8 @@ The UI must validate:
 ### 7.2 Transitions and Guards
 
 - Discover inspect -> preview plan -> confirm -> apply
-- My Skills selection -> preview removal or update consequences -> confirm -> apply
-- Deck selection -> preview membership and install consequences -> confirm -> apply
+- Library selection -> preview removal or update consequences -> confirm -> apply
+- Library deck subview -> preview membership and install consequences -> confirm -> apply
 - Create editing -> preview -> confirm -> save or promote
 - Benchmark Lab review -> compare candidates -> confirm promotion or hold
 
@@ -248,7 +243,7 @@ Discover flow:
 3. choose artifacts
 4. preview plan
 5. confirm apply
-6. land in My Skills or Decks depending on the selected artifact
+6. land in Library with contextual deck or workspace detail depending on the selected artifact
 
 ### 8.2 Failure or Retry Branches
 
@@ -280,9 +275,9 @@ The UI must expose:
 Desktop is a shell over the same operations expressed by CLI.
 
 - Discover maps to inspect/plan/apply
-- My Skills maps to remove/sync/update and skill state browsing
+- Library maps to remove/sync/update and artifact/runtime state browsing
 - Create maps to create/import/promote
-- Decks maps to collection review and deck-driven install
+- contextual deck views map to collection review and deck-driven install
 - Benchmark Lab maps to benchmark execution and promotion review
 
 ## 11. External Integration Contract
@@ -292,7 +287,7 @@ Desktop is a shell over the same operations expressed by CLI.
 - source inspection
 - plan preview
 - apply/remove/sync operations
-- guide output preview
+- agent-file output preview
 - benchmark and promotion review
 
 ## 12. Context Packaging and Prompt Inputs
@@ -301,8 +296,8 @@ Desktop is a shell over the same operations expressed by CLI.
 
 Always provide:
 
-- [03-SPEC.md](/Users/axient/repository/praxis/specs/03-SPEC.md)
-- [07-UX-IA.md](/Users/axient/repository/praxis/specs/07-UX-IA.md)
+- [03-SPEC.md](03-SPEC.md)
+- [07-UX-IA.md](07-UX-IA.md)
 
 ### 12.2 Task-Specific Context
 
@@ -356,19 +351,19 @@ Only include:
 - show exact consequences before mutation
 - preserve source provenance visibility
 - preserve managed vs user-owned distinction
-- keep guide outputs contextual instead of promoting them into top-level navigation
+- keep agent-file outputs contextual instead of promoting them into top-level navigation
 
 ### 15.2 Ask First
 
 - any action that removes managed artifacts
-- any apply that affects guide files with user content
+- any apply that affects agent files with user content
 - any promotion action from Benchmark Lab into production-ready state
 
 ### 15.3 Never Do
 
 - never hide source origin
 - never make Plan a top-level managed destination
-- never make Guides a top-level surface
+- never make Agent Files a top-level surface
 - never mutate runtime files without a visible preview step
 
 ## 16. Reference Algorithms and Task Decomposition
@@ -384,7 +379,7 @@ Only include:
 
 ### 16.2 Task Units and Parallelism
 
-- surface-specific work should be separated by Discover, My Skills, Create, Decks, Benchmark Lab, and utilities
+- surface-specific work should be separated by Discover, Library, Create, Benchmark Lab, and utilities
 - UI work may proceed in parallel across unrelated surfaces, but consequence preview and mutation confirmation must remain sequential in one flow
 
 ## 17. Validation, Commands, and Success Criteria
@@ -401,9 +396,9 @@ Only include:
 
 - every primary surface has a bounded job
 - plan remains transient rather than a top-level destination
-- My Skills filters preserve presence-state semantics
-- workspace context scopes installs, guide outputs, and doctor results
-- guides remain contextual rather than top-level
+- Library filters preserve presence-state semantics
+- workspace context scopes installs, agent-file outputs, and doctor results
+- agent files remain contextual rather than top-level
 
 ### 17.3 Acceptance and Conformance Gates
 
@@ -416,7 +411,7 @@ Only include:
 ### 18.1 Required for Conformance
 
 - primary and utility navigation implemented
-- Discover, My Skills, Create, Decks, and Benchmark Lab surfaces implemented
+- Discover, Library, Create, and Benchmark Lab surfaces implemented
 - consequence preview implemented before mutation
 - Health and Connections implemented as utility surfaces
 
@@ -429,6 +424,6 @@ Only include:
 ### 18.3 Spec Update Triggers
 
 - top-level surface list changes
-- My Skills or Decks state model changes
+- Library or contextual deck state model changes
 - workspace context model changes
 - plan or apply semantics change in CLI/core

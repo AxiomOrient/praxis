@@ -43,6 +43,32 @@ pub enum TargetProfile {
     MultiRuntimeDefault,
 }
 
+impl TargetProfile {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CodexOpenStandard => "codex-open-standard",
+            Self::ClaudeNative => "claude-native",
+            Self::GeminiNative => "gemini-native",
+            Self::CodexGeminiSharedOpenStandard => "codex-gemini-shared-open-standard",
+            Self::MultiRuntimeDefault => "multi-runtime-default",
+        }
+    }
+
+    pub fn default_targets(&self) -> Vec<Agent> {
+        match self {
+            Self::CodexOpenStandard => vec![Agent::Codex],
+            Self::ClaudeNative => vec![Agent::Claude],
+            Self::GeminiNative => vec![Agent::Gemini],
+            Self::CodexGeminiSharedOpenStandard => vec![Agent::Codex, Agent::Gemini],
+            Self::MultiRuntimeDefault => vec![Agent::Codex, Agent::Claude],
+        }
+    }
+
+    pub fn references_gemini_runtime_targets(&self) -> bool {
+        matches!(self, Self::GeminiNative | Self::CodexGeminiSharedOpenStandard)
+    }
+}
+
 // ─── Agent file slots ─────────────────────────────────────────────────────────
 
 /// Canonical agent file slot identifiers (specs/03-SPEC.md §11.2).
@@ -338,6 +364,89 @@ pub struct TargetPaths {
     pub gemini_project_root: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryStats {
+    pub sources: usize,
+    pub snapshots: usize,
+    pub artifacts: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryStoreSnapshot {
+    pub db_path: String,
+    pub artifact_root: String,
+    pub stats: LibraryStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkSuiteSummary {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub case_count: usize,
+    pub suite_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkRunSummary {
+    pub id: String,
+    pub suite_id: String,
+    pub candidate_source_id: String,
+    pub baseline_source_id: Option<String>,
+    pub mode: String,
+    pub status: String,
+    pub recommendation: String,
+    pub score: f64,
+    pub summary: String,
+    pub reviewer_note: Option<String>,
+    pub review_decision: Option<String>,
+    pub created_at: String,
+    pub finished_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluationSnapshot {
+    pub suites: Vec<BenchmarkSuiteSummary>,
+    pub recent_runs: Vec<BenchmarkRunSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftSummary {
+    pub id: String,
+    pub name: String,
+    pub artifact_kind: String,
+    pub version_id: String,
+    pub preset: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreviewTreeEntry {
+    pub path: String,
+    pub entry_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftDocument {
+    pub path: String,
+    pub content: String,
+    pub editable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftPreview {
+    pub draft: DraftSummary,
+    pub files: Vec<PreviewTreeEntry>,
+    pub documents: Vec<DraftDocument>,
+    pub promotion_target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSnapshot {
+    pub drafts: Vec<DraftSummary>,
+}
+
 // ─── Workspace snapshot ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,6 +454,9 @@ pub struct WorkspaceSnapshot {
     pub manifest: WorkspaceManifest,
     pub lock: WorkspaceLock,
     pub targets: TargetPaths,
+    pub library: LibraryStoreSnapshot,
+    pub evaluation: EvaluationSnapshot,
+    pub create: CreateSnapshot,
     pub warnings: Vec<String>,
 }
 
@@ -418,6 +530,67 @@ pub struct RemoveRequest {
     pub skills: Vec<String>,
     pub agent_file_templates: Vec<String>,
     pub remove_all: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkRunRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub suite_id: String,
+    pub source: String,
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HumanReviewRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub run_id: String,
+    pub decision: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDraftRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub preset: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftPreviewRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub draft_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromoteDraftRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub draft_id: String,
+    pub destination_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForkDraftRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub source: String,
+    pub skill_name: String,
+    pub draft_name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftUpdateRequest {
+    pub scope: Scope,
+    pub root: Option<String>,
+    pub draft_id: String,
+    pub relative_path: String,
+    pub content: String,
 }
 
 /// Write user-authored content to an agent file slot.
