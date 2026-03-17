@@ -23,13 +23,13 @@
   import StarterSourceCard from "./lib/components/StarterSourceCard.svelte";
   import {
     augmentCreateDraft,
+    agentFiles,
+    agentFilesWrite,
     benchmarkRun,
     cancelJob,
     createSkillDraft,
     doctor,
     forkCreateDraft,
-    guidance,
-    guidanceWrite,
     inspect,
     install,
     plan,
@@ -74,8 +74,6 @@
     "claude-project-root",
     "claude-project-dot",
     "claude-user-root",
-    "gemini-project-root",
-    "gemini-user-root",
   ];
   const STARTER_DECK_IDS = ["core", "starter", "default", "workflow"];
 
@@ -155,10 +153,6 @@
         return ["codex"];
       case "claude-native":
         return ["claude"];
-      case "gemini-native":
-        return ["gemini"];
-      case "codex-gemini-shared-open-standard":
-        return ["codex", "gemini"];
       default:
         return ["codex", "claude"];
     }
@@ -428,7 +422,7 @@
     error = null;
     try {
       snapshot = await workspace(nextScope, nextScope === "repo" ? workspaceRoot.trim() : null);
-      agentFileSnapshot = await guidance(nextScope, nextScope === "repo" ? workspaceRoot.trim() : null);
+      agentFileSnapshot = await agentFiles(nextScope, nextScope === "repo" ? workspaceRoot.trim() : null);
       if (!selectedDraftId && snapshot.create.drafts[0]) {
         selectedDraftId = snapshot.create.drafts[0].id;
       }
@@ -497,7 +491,7 @@
     error = null;
     try {
       snapshot = await install(installPayload());
-      agentFileSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await agentFiles(scope, currentRoot());
       hydrateSelectionFromInstall(catalog.source_id);
       activeTab = "library";
     } catch (err) {
@@ -520,7 +514,7 @@
         agent_file_templates: [],
         remove_all: true,
       });
-      agentFileSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await agentFiles(scope, currentRoot());
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
@@ -537,7 +531,7 @@
     error = null;
     try {
       snapshot = await sync(scope, currentRoot());
-      agentFileSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await agentFiles(scope, currentRoot());
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
@@ -553,7 +547,7 @@
     error = null;
     try {
       snapshot = await update(scope, currentRoot());
-      agentFileSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await agentFiles(scope, currentRoot());
       if (catalog) {
         hydrateSelectionFromInstall(catalog.source_id);
       }
@@ -581,7 +575,7 @@
     busy = true;
     error = null;
     try {
-      agentFileSnapshot = await guidanceWrite({
+      agentFileSnapshot = await agentFilesWrite({
         scope,
         root: currentRoot(),
         slot,
@@ -933,7 +927,7 @@
         return;
       }
       snapshot = await install(installPayload());
-      agentFileSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await agentFiles(scope, currentRoot());
       hydrateSelectionFromInstall(catalog.source_id);
       activeTab = "library";
     } catch (err) {
@@ -1007,7 +1001,7 @@
         agent_file_templates: selectedAgentFileTemplates,
         remove_all: false,
       });
-      agentFileSnapshot = await guidance(scope, currentRoot());
+      agentFileSnapshot = await agentFiles(scope, currentRoot());
       hydrateSelectionFromInstall(catalog.source_id);
       activeTab = "library";
     } catch (err) {
@@ -1138,7 +1132,7 @@
         {#if activeTab === "discover"}{tr("hero.catalog.title")}
         {:else if activeTab === "plan"}{tr("hero.plan.title")}
         {:else if activeTab === "library"}{tr("hero.installed.title")}
-        {:else if activeTab === "agent-files"}{tr("hero.guides.title")}
+        {:else if activeTab === "agent-files"}{tr("hero.agentFiles.title")}
         {:else if activeTab === "create"}{tr("hero.create.title")}
         {:else if activeTab === "benchmarks"}{tr("hero.benchmarks.title")}
         {:else if activeTab === "connections"}{tr("hero.connections.title")}
@@ -1150,7 +1144,7 @@
         {#if activeTab === "discover"}{tr("hero.catalog.copy")}
         {:else if activeTab === "plan"}{tr("hero.plan.copy")}
         {:else if activeTab === "library"}{tr("hero.installed.copy")}
-        {:else if activeTab === "agent-files"}{tr("hero.guides.copy")}
+        {:else if activeTab === "agent-files"}{tr("hero.agentFiles.copy")}
         {:else if activeTab === "create"}{tr("hero.create.copy")}
         {:else if activeTab === "benchmarks"}{tr("hero.benchmarks.copy")}
         {:else if activeTab === "connections"}{tr("hero.connections.copy")}
@@ -1236,7 +1230,7 @@
                         <strong>{catalog.recipe.label}</strong> · {catalog.recipe.description}
                       </div>
                       {#if catalog.recipe.recommended_agent_file_templates.length}
-                        <button onclick={applyRecommendedAgentFileTemplates}>{tr("common.useRecommendedGuides")}</button>
+                        <button onclick={applyRecommendedAgentFileTemplates}>{tr("common.useRecommendedAgentFiles")}</button>
                       {/if}
                     </div>
                   {/if}
@@ -1333,10 +1327,10 @@
 
               <section class="section">
                 <div class="section-head">
-                  <h2>{tr("catalog.guideSlots")}</h2>
+                  <h2>{tr("catalog.agentFileTemplates")}</h2>
                   <div class="meta">{filteredAgentFileTemplates.length}</div>
                 </div>
-                <input class="search-input" bind:value={agentFileTemplateQuery} placeholder={tr("catalog.searchGuides")} />
+                <input class="search-input" bind:value={agentFileTemplateQuery} placeholder={tr("catalog.searchAgentFileTemplates")} />
                 <div class="guide-slot-list">
                   {#each filteredAgentFileTemplates as template}
                     <button
@@ -1489,7 +1483,7 @@
                 <div class="summary-box"><span>{tr("plan.totalSkills")}</span><strong>{planState.summary.total_skills}</strong></div>
                 <div class="summary-box"><span>{tr("plan.codexSkills")}</span><strong>{planState.summary.codex_skills}</strong></div>
                 <div class="summary-box"><span>{tr("plan.claudeSkills")}</span><strong>{planState.summary.claude_skills}</strong></div>
-                <div class="summary-box"><span>{tr("plan.guides")}</span><strong>{planState.summary.total_agent_file_actions}</strong></div>
+                <div class="summary-box"><span>{tr("plan.agentFiles")}</span><strong>{planState.summary.total_agent_file_actions}</strong></div>
               </div>
 
               <div class="receipt-panel">
@@ -1498,7 +1492,7 @@
                 <div class="receipt-row"><span>{tr("plan.targets")}</span><strong>{planState.targets.join(", ")}</strong></div>
                 <div class="receipt-row"><span>{tr("plan.decks")}</span><strong>{planState.selection.decks.join(", ") || tr("common.none")}</strong></div>
                 <div class="receipt-row"><span>{tr("plan.skillCards")}</span><strong>{planState.selection.skills.join(", ") || tr("common.none")}</strong></div>
-                <div class="receipt-row"><span>{tr("plan.guideSlots")}</span><strong>{planState.selection.agent_file_templates.join(", ") || tr("common.none")}</strong></div>
+                <div class="receipt-row"><span>{tr("plan.agentFileTemplates")}</span><strong>{planState.selection.agent_file_templates.join(", ") || tr("common.none")}</strong></div>
                 <div class="receipt-row"><span>{tr("plan.excluded")}</span><strong>{planState.selection.exclude_skills.join(", ") || tr("common.none")}</strong></div>
               </div>
             </section>
@@ -1565,7 +1559,7 @@
             {#if planState.agent_file_actions.length}
               <section class="section">
                 <div class="section-head">
-                  <h2>{tr("plan.guideFileChanges")}</h2>
+                  <h2>{tr("plan.agentFileChanges")}</h2>
                   <div class="meta">{planState.agent_file_actions.length}</div>
                 </div>
                 <div class="receipt-panel">
@@ -1633,16 +1627,16 @@
                       currentSource: tr("installed.currentSource"),
                       emptySelection: tr("installed.emptySelection"),
                       appliedSkills: tr("installed.appliedSkills"),
-                      agentFileActions: tr("installed.guideBlocks"),
+                      agentFileActions: tr("installed.agentFileActions"),
                       bundles: tr("installed.bundles"),
                       reference: tr("installed.reference"),
                       local: tr("common.local"),
                       selectionAll: tr("installed.selectionAll"),
                       selectionDecks: (count) => tr("installed.selectionDecks", { count }),
                       selectionCards: (count) => tr("installed.selectionCards", { count }),
-                      selectionAgentFileTemplates: (count) => tr("installed.selectionGuides", { count }),
+                      selectionAgentFileTemplates: (count) => tr("installed.selectionAgentFiles", { count }),
                       metaExcluded: (items) => tr("installed.metaExcluded", { items }),
-                      metaAgentFileTemplates: (items) => tr("installed.metaGuides", { items }),
+                      metaAgentFileTemplates: (items) => tr("installed.metaAgentFiles", { items }),
                       metaSourceHash: (hash) => tr("installed.metaSourceHash", { hash }),
                     }}
                   />
@@ -1697,7 +1691,7 @@
                 <button disabled={busy} onclick={handleSync}><RefreshCw size={14} /> {tr("common.sync")}</button>
                 <button disabled={busy} onclick={handleUpdate}><RefreshCw size={14} /> {tr("common.update")}</button>
                 <button disabled={busy} onclick={handleDoctor}><Activity size={14} /> {tr("common.doctor")}</button>
-                <button disabled={busy} onclick={() => (activeTab = "agent-files")}><BookOpen size={14} /> {tr("common.guides")}</button>
+                <button disabled={busy} onclick={() => (activeTab = "agent-files")}><BookOpen size={14} /> {tr("common.agentFiles")}</button>
               </div>
             </section>
           {/if}
@@ -1711,9 +1705,9 @@
               {#each AGENT_FILE_SLOTS as slot}
                 <button class:selected={activeAgentFileSlot === slot} class="guide-slot" onclick={() => (activeAgentFileSlot = slot)}>
                   <div>
-                    <div class="eyebrow">{tr("guides.slot")}</div>
+                    <div class="eyebrow">{tr("agentFiles.slot")}</div>
                     <strong>{slot}</strong>
-                    <p>{agentFileSnapshot?.slots.find((item) => item.slot === slot)?.target_path ?? tr("guides.noPath")}</p>
+                    <p>{agentFileSnapshot?.slots.find((item) => item.slot === slot)?.target_path ?? tr("agentFiles.noPath")}</p>
                   </div>
                   <div class="guide-slot-meta">
                     <span>{activeAgentFileSlot === slot ? tr("common.editing") : tr("common.open")}</span>
@@ -1726,12 +1720,12 @@
               {busy}
               onSave={handleAgentFileSave}
               labels={{
-                save: tr("guideEditor.save"),
-                managedBlocks: (count) => tr("guideEditor.managedBlocks", { count }),
-                exists: tr("guideEditor.exists"),
-                notCreated: tr("guideEditor.notCreated"),
-                emptyTitle: tr("guideEditor.emptyTitle"),
-                emptyCopy: tr("guideEditor.emptyCopy"),
+                save: tr("agentFileEditor.save"),
+                managedBlocks: (count) => tr("agentFileEditor.managedBlocks", { count }),
+                exists: tr("agentFileEditor.exists"),
+                notCreated: tr("agentFileEditor.notCreated"),
+                emptyTitle: tr("agentFileEditor.emptyTitle"),
+                emptyCopy: tr("agentFileEditor.emptyCopy"),
               }}
             />
           </section>

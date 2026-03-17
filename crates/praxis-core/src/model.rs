@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 pub enum Agent {
     Codex,
     Claude,
-    Gemini,
 }
 
 impl Agent {
@@ -15,7 +14,6 @@ impl Agent {
         match self {
             Self::Codex => "codex",
             Self::Claude => "claude",
-            Self::Gemini => "gemini",
         }
     }
 }
@@ -37,8 +35,6 @@ pub enum Scope {
 pub enum TargetProfile {
     CodexOpenStandard,
     ClaudeNative,
-    GeminiNative,
-    CodexGeminiSharedOpenStandard,
     #[default]
     MultiRuntimeDefault,
 }
@@ -48,8 +44,6 @@ impl TargetProfile {
         match self {
             Self::CodexOpenStandard => "codex-open-standard",
             Self::ClaudeNative => "claude-native",
-            Self::GeminiNative => "gemini-native",
-            Self::CodexGeminiSharedOpenStandard => "codex-gemini-shared-open-standard",
             Self::MultiRuntimeDefault => "multi-runtime-default",
         }
     }
@@ -58,17 +52,8 @@ impl TargetProfile {
         match self {
             Self::CodexOpenStandard => vec![Agent::Codex],
             Self::ClaudeNative => vec![Agent::Claude],
-            Self::GeminiNative => vec![Agent::Gemini],
-            Self::CodexGeminiSharedOpenStandard => vec![Agent::Codex, Agent::Gemini],
             Self::MultiRuntimeDefault => vec![Agent::Codex, Agent::Claude],
         }
-    }
-
-    pub fn references_gemini_runtime_targets(&self) -> bool {
-        matches!(
-            self,
-            Self::GeminiNative | Self::CodexGeminiSharedOpenStandard
-        )
     }
 }
 
@@ -90,9 +75,6 @@ pub enum AgentFileSlot {
     ClaudeUserRoot,    // ~/.claude/CLAUDE.md
     ClaudeProjectRoot, // $REPO/CLAUDE.md
     ClaudeProjectDot,  // $REPO/.claude/CLAUDE.md
-    // Gemini CLI
-    GeminiUserRoot,    // ~/.gemini/GEMINI.md
-    GeminiProjectRoot, // $REPO/GEMINI.md
 }
 
 impl AgentFileSlot {
@@ -105,8 +87,6 @@ impl AgentFileSlot {
             Self::ClaudeUserRoot => "claude-user-root",
             Self::ClaudeProjectRoot => "claude-project-root",
             Self::ClaudeProjectDot => "claude-project-dot",
-            Self::GeminiUserRoot => "gemini-user-root",
-            Self::GeminiProjectRoot => "gemini-project-root",
         }
     }
 
@@ -117,7 +97,6 @@ impl AgentFileSlot {
                 | Self::CodexProjectOverride
                 | Self::ClaudeProjectRoot
                 | Self::ClaudeProjectDot
-                | Self::GeminiProjectRoot
         )
     }
 
@@ -358,13 +337,11 @@ impl Default for WorkspaceLock {
 pub struct TargetPaths {
     pub codex_skills: String,
     pub claude_skills: String,
-    pub gemini_skills: String,
     pub codex_agents: String,
     pub codex_override: String,
     pub codex_agent_alias: String,
     pub claude_root: String,
     pub claude_dot: String,
-    pub gemini_project_root: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -764,7 +741,6 @@ pub struct PlanSummary {
     pub total_bundles: usize,
     pub codex_skills: usize,
     pub claude_skills: usize,
-    pub gemini_skills: usize,
     pub codex_bundles: usize,
     pub claude_bundles: usize,
 }
@@ -832,4 +808,49 @@ pub struct LibraryEntry {
     pub origin: LibraryOrigin,
     pub presence_state: PresenceState,
     pub status_flags: Vec<LibraryStatusFlag>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InstallSelection;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn install_selection_deserializes_legacy_guides_alias() {
+        let selection: InstallSelection = serde_json::from_value(json!({
+            "all": false,
+            "decks": [],
+            "skills": [],
+            "exclude_skills": [],
+            "guides": ["codex-project-root"]
+        }))
+        .expect("deserialize install selection");
+
+        assert_eq!(
+            selection.agent_file_templates,
+            vec!["codex-project-root".to_string()]
+        );
+    }
+
+    #[test]
+    fn install_selection_serializes_canonical_agent_file_templates_key() {
+        let selection = InstallSelection {
+            all: false,
+            decks: Vec::new(),
+            skills: Vec::new(),
+            exclude_skills: Vec::new(),
+            agent_file_templates: vec!["codex-project-root".to_string()],
+        };
+
+        let value = serde_json::to_value(selection).expect("serialize install selection");
+        let object = value.as_object().expect("selection object");
+
+        assert_eq!(
+            object.get("agent_file_templates"),
+            Some(&Value::Array(vec![Value::String(
+                "codex-project-root".to_string()
+            )]))
+        );
+        assert!(!object.contains_key("guides"));
+    }
 }

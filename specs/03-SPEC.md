@@ -27,12 +27,12 @@ Important boundary:
 ### 2.1 Goals
 
 - inspect external GitHub, local, and internal sources
-- discover portable skills, decks, guide outputs, and agent-file templates from those sources
+- discover portable skills, decks, and agent-file templates from those sources
 - preview exact filesystem and runtime-file consequences before mutation
 - apply copy-only installs with deterministic ownership and residue-free removal
 - manage persistent instruction files for supported runtimes as first-class outputs
 - support draft creation, import, fork, rename, augment, and promotion of artifacts
-- preserve runtime-specific differences across Codex, Claude Code, and Gemini integrations without pretending one universal runtime model exists
+- preserve runtime-specific differences across Codex, Claude Code, and future Gemini integrations without pretending one universal runtime model exists
 - provide contract-consistent CLI and desktop surfaces
 - make validation, drift, collisions, benchmark evidence, and provenance visible
 - persist library metadata, jobs, and benchmark history across restarts without requiring a resident daemon
@@ -55,7 +55,7 @@ Important boundary:
    - stores metadata in SQLite and artifact contents in filesystem state
 
 2. `Runtime Plane`
-   - preserves the current deterministic planner, reconciler, guide merge, manifest, and lock model
+   - preserves the current deterministic planner, reconciler, agent-file composition, manifest, and lock model
    - maps library-resolved versions into concrete runtime outputs
 
 3. `Evaluation Plane`
@@ -85,13 +85,13 @@ Important boundary:
    - exact fetched or captured source state
 
 3. `Library Version Layer`
-   - immutable normalized skill, deck, guide, and bundle versions
+   - immutable normalized skill, deck, agent-file-template, and bundle versions
 
 4. `Workspace Selection Layer`
    - desired state for one workspace
 
 5. `Runtime Reconciliation Layer`
-   - plan, apply, prune, lock, and guide merge
+   - plan, apply, prune, lock, and agent-file composition
 
 6. `Evaluation Layer`
    - benchmark results and promotion evidence
@@ -427,7 +427,7 @@ At minimum, Praxis must validate:
 6. stop if blocking conflicts exist
 7. write outputs
 8. write manifest and lock to the same successful reconciliation result
-9. update Library-backed views, Health, guide output views, and Benchmark surfaces
+9. update Library-backed views, Health, agent-file views, and Benchmark surfaces
 
 ### 8.2 Failure or Retry Branches
 
@@ -441,7 +441,7 @@ At minimum, Praxis must validate:
 ### 9.1 Managed Locations
 
 - SQLite DB — library metadata, provenance, jobs, benchmark history, and connection state
-- library artifact store — immutable skill, deck, guide, and bundle contents
+- library artifact store — immutable skill, deck, agent-file-template, and bundle contents
 - manifest — desired workspace state
 - lock — applied ownership state
 - cache — fetched source material

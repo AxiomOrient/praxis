@@ -1,200 +1,136 @@
-# Praxis Phase Roadmap And Execution Plan
+# Public Runtime Contract Convergence Plan
 
-## Mission
+Status: completed on 2026-03-17 after PRC-01 through PRC-06 landed and verification gates passed.
 
-Re-anchor Praxis around the final phased product shape so IA redesign becomes a first-order implementation concern instead of deferred cleanup.
+## Request
 
-## Canonical Authority
+Remove Gemini from the public runtime-file contract, converge all public naming on `Agent Files`, and define one execution-ready path that can be implemented without reopening product-boundary debates.
 
-For this delivery path, authority is fixed in this order:
+This file supersedes the completed live `codex-runtime` validation plan as the active implementation plan.
+The live validation slice was reviewed against code, tests, doctor output, runbook, and wrapper script, and no remaining implementation work was found in that older plan.
 
-1. `plans/PRAXIS_FINAL_FORM_REFINEMENT.md`
-2. `plans/PRAXIS_FINAL_SPEC.md`
-3. `specs/03-SPEC.md`
-4. `specs/04-RUNTIME-TARGET-PROFILES.md`
+## Fixed Decisions
 
-Implication:
+1. Public runtime-file targets are only `codex` and `claude`.
+2. Gemini remains a prose-only future integration concept until a concrete runtime-file contract is formally adopted.
+3. Public contracts must not expose Gemini runtime profiles, runtime-file slots, runtime paths, or install targets.
+4. The canonical noun is `Agent Files`.
+5. Public surface names must not use `guidance` or `guides`.
+6. Backward-compatible read aliases are allowed only for persisted input compatibility where they reduce migration risk; they must not remain the canonical output shape.
+7. Existing live `codex-runtime` validation artifacts remain in place and are not part of this change.
 
-- primary surfaces converge to `Discover`, `Library`, `Create`, `Benchmarks`
-- utility surfaces converge to `Connections`, `Health`, `Settings`
-- `Plan`, `Decks`, and `Agent Files` are contextual/detail surfaces, not peer top-level destinations
-- Gemini remains integration-only until formally promoted
+## Problem Statement
 
-## Product Shape
+Praxis currently states in `README.md` and `specs/04-RUNTIME-TARGET-PROFILES.md` that Gemini is integration-only, while the public type system, workspace path model, CLI surface, desktop types, and bridge commands still expose Gemini runtime-file concepts.
 
-Praxis final form is:
+Praxis also declares in `specs/00-HANDOFF.md` that `Guides` is retired language, while canonical and implementation surfaces still expose `guidance`, `guides`, and `guide` wording.
 
-- `Library Plane`
-- `Runtime Plane`
-- `Evaluation Plane`
+That creates two harmful states:
 
-The current deterministic installer core is preserved as the Runtime Plane nucleus.
+- the public contract advertises runtime-file capabilities that the product explicitly rejects
+- the naming contract remains split between canonical docs and implementation surfaces
 
-## Phase Map
+## Scope Contract
 
-### Phase 0. Canonical convergence
+### In Scope
 
-Goals:
+- canonical product docs and README
+- public core model and serialized snapshot contract
+- workspace path and runtime slot contract
+- planner, doctor, and runtime validation behavior that depends on public runtime-file target types
+- CLI command names and help text
+- desktop bridge command names, API helpers, frontend types, i18n keys, HTML metadata, and visible copy
+- test fixtures and snapshot assertions that currently encode Gemini runtime-file paths or legacy public nouns
+- regression tests and grep/build gates that prove the contract convergence
 
-- remove contract drift across plans, specs, README, examples, and desktop
-- settle the canonical IA authority before more UI work lands
-- finish terminology migration to `Agent Files`
+### Out of Scope
 
-Required outputs:
+- adding a new Gemini runtime-file contract
+- redesigning the live `codex-runtime` executor slice
+- broad create/evaluation product changes unrelated to runtime-file contract cleanup
+- a compiled canonical spec artifact in this slice
 
-- one consistent phase roadmap
-- one consistent navigation contract
-- one consistent runtime-target contract
+## Design Summary
 
-### Phase 1. Desktop shell convergence
+The change should split `runtime-file contract` from `future integration posture` at the type boundary rather than relying on runtime rejection.
 
-Goals:
+### Target State
 
-- reshape desktop around final navigation
-- keep `plan` and `agent file editor` contextual
-- map existing functionality into the new shell without inventing fake contracts
+- `Agent`, `TargetProfile`, `AgentFileSlot`, `TargetPaths`, and desktop DTOs represent only supported runtime-file targets.
+- No public command, DTO, or UI selector allows Gemini runtime-file selection.
+- Source scanning and agent-file template discovery stop emitting Gemini runtime-file slots.
+- Workspace path resolution and initialization stop creating Gemini runtime-file locations as part of the managed runtime contract.
+- Canonical docs, README, CLI, desktop, and tests all use `Agent Files` terminology.
 
-Required outputs:
+### Compatibility Rule
 
-- Discover surface over inspect/select/preview/apply
-- Library surface over installed state and workspace outputs
-- Health surface over doctor/runtime checks
-- stable placeholders or scoped empty states for not-yet-implemented Create, Benchmarks, Connections
+- Keep read-only compatibility aliases only where persisted user state may still contain legacy names, such as manifest field aliases.
+- The preferred bounded exception is `guides` as a deserialize-only alias for persisted selection input.
+- Do not keep legacy names in help text, command names, serialized snapshots, or frontend/public type definitions.
+- Do not keep Gemini runtime-file fields as "reserved" public placeholders. A future Gemini adoption must add them back through an explicit contract change.
 
-### Phase 2. Runtime Plane hardening
+## Workstreams
 
-Goals:
+### W1. Canonical Contract Convergence
 
-- finish path invariants and runtime-target semantics
-- add conformance tests around planner/reconciler/agent-file composition
-- align desktop/backend schema rigorously
+- remove Gemini runtime-file targets from canonical docs and README surface definitions
+- replace remaining `guide`/`guidance`/`guides` product nouns with `agent files` or `agent file templates`
+- make the docs state that future Gemini support requires a fresh contract adoption change
 
-Required outputs:
+### W2. Public Type-System Surgery
 
-- runtime target/profile invariants enforced
-- contract tests for plan/apply/remove/sync/doctor
-- desktop/backend schema conformance tests
+- remove Gemini runtime-file variants from public Rust enums and DTOs
+- remove Gemini runtime-file fields from workspace snapshots and desktop types
+- delete runtime validation branches that only exist because unsupported Gemini variants are still representable
 
-### Phase 3. Library Plane
+### W3. Runtime and Scan Boundary Cleanup
 
-Goals:
+- stop creating Gemini runtime skill roots and runtime-file paths inside managed workspace setup
+- stop resolving Gemini agent-file slots inside managed composition
+- stop discovering or recommending Gemini runtime-file templates from scanned sources
+- update test helpers and fixture constructors that currently fabricate Gemini runtime-file paths so the suite reflects the new contract rather than legacy placeholders
 
-- add SQLite-backed library metadata
-- add artifact store and provenance model
-- ingest source snapshots into a queryable local library
+### W4. Surface Renaming
 
-Required outputs:
+- rename CLI `Guidance` to `AgentFiles`
+- rename desktop bridge/API commands away from `guidance`/`guidance_write`
+- rename i18n keys, HTML metadata, source descriptions, and visible copy so public surface vocabulary is internally consistent
 
-- metadata DB schema
-- filesystem artifact store layout
-- internal sources for drafts/collections
+### W5. Regression and Migration Gates
 
-### Phase 4. Evaluation Plane
-
-Goals:
-
-- add benchmark suite definitions and result persistence
-- store candidate/current comparisons
-- enable promotion evidence
-
-Required outputs:
-
-- benchmark schema
-- result storage
-- CLI/UI evidence surfaces
-
-### Phase 5. Create system
-
-Goals:
-
-- add drafts, presets, preview tree, lineage, and promotion writer
-- ensure authoring flows preserve repository contracts
-
-Required outputs:
-
-- create/import/fork/augment flows
-- preview tree
-- promotion/export path
-
-### Phase 6. External execution and cooperative jobs
-
-Goals:
-
-- add one optional external LLM execution substrate without changing the local-first authority model
-- implement persisted cooperative jobs with lease/reclaim semantics for long-running work
-- route AI judge and human review through the same durable job model
-
-Required outputs:
-
-- one recommended provider bridge: `codex-runtime`
-- persisted `jobs` execution path with `queued -> leased -> running -> terminal`
-- worker lease, reclaim, heartbeat, cancel, and retry semantics
-- desktop/CLI job queue and run detail surfaces
-
-### Phase 7. Lineage UX and promotion review
-
-Goals:
-
-- make fork and augment lineage visible enough that promotion decisions are explainable
-- show provenance, diffs, and evidence in one narrow review flow instead of spreading them across multiple panels
-- keep lineage UX immutable, inspectable, and lightweight
-
-Required outputs:
-
-- lineage timeline or ancestry chain on skill detail
-- explicit fork vs augment intent and parent version visibility
-- promotion review surface that combines ancestry, changed files, benchmark evidence, and review state
-
-## Current Execution Slice
-
-This run executed the full P0→P7 convergence slice:
-
-1. canonical/spec/README/desktop IA convergence
-2. runtime workspace path invariants plus target-profile-aware validation
-3. library metadata DB plus filesystem artifact store
-4. evaluation suite/run persistence plus desktop evidence surfaces
-5. create draft/preview/promotion flows against repository contracts
-6. optional `codex-runtime` executor boundary plus persisted cooperative jobs
-7. lineage-aware create review and promotion-oriented desktop surfaces
-
-## Out Of Scope For This Run
-
-- hosted or remote provider abstractions beyond local `codex-runtime`
-- graph-heavy lineage visualization beyond ancestry/review summaries
-- autonomous multi-run orchestration as a first-class Praxis product boundary
-
-## Recommended Next-Step Boundary
-
-Use `codex-runtime` as the external LLM execution substrate when Praxis needs optional AI judge or assisted authoring turns.
-
-Reasoning:
-
-- it is a low-level session/runtime wrapper around the local `codex app-server`
-- it already exposes reusable session, automation, and direct app-server layers
-- it fits Praxis's local-first model because Praxis can keep SQLite/artifact store/jobs as authority and treat the LLM as one worker capability
-
-Do not embed `AxiomRunner` into Praxis core.
-
-Reasoning:
-
-- it is a full goal-file autonomous runtime with its own run journal, control states, and operator surface
-- its product boundary is broader than Praxis's missing gap
-- integrating it into core would duplicate job state, run semantics, and review flow instead of simplifying them
-
-Recommended use of `AxiomRunner`:
-
-- keep it as a separate operator tool for dogfooding, batch validation, or external nightly automation
-- if needed later, expose it as an export target or external executor profile, not as Praxis's internal job engine
+- add tests that legacy manifest input still deserializes where intended
+- add tests that public snapshots no longer serialize Gemini runtime-file fields
+- add grep/build gates that fail on public `guidance`/`guides` regressions outside allowed reference URLs or compatibility aliases
 
 ## Verification Gates
 
 1. `cargo test --workspace`
 2. `npm run build` in `apps/praxis-desktop`
-3. `rg -n 'Agent Files|My Skills|Decks|Guides' specs/00-HANDOFF.md specs/02-BLUEPRINT.md specs/07-UX-IA.md plans/PRAXIS_FINAL_FORM_REFINEMENT.md` shows one consistent IA story
-4. desktop nav no longer exposes `Plan` or `Guides` as peer top-level destinations
-5. runtime target defaults and validation are covered by core tests
-6. desktop/backend schema conformance checks serialize current contract field names
-7. benchmark suite bootstrap and persisted runs are covered by core tests
-8. draft preview and repo-contract promotion flows are covered by core tests
-9. external AI execution remains optional and cannot bypass persisted job/evidence state
-10. lineage and promotion review surfaces stay derived from persisted provenance instead of ephemeral UI-only state
+3. `rg -n 'guide outputs|guide merge|Guidance\\b|guidance_write|guidance\\(|nav\\.guides|hero\\.guides|common\\.guides|plan\\.guides|guides\\.slot|guides\\.noPath' README.md specs crates apps --glob '!specs/99-REFERENCES.md'`
+4. `rg -n 'Agent::Gemini|GeminiNative|CodexGeminiSharedOpenStandard|GeminiUserRoot|GeminiProjectRoot|gemini_project_root|gemini_skills' crates apps`
+5. serialization tests prove current public snapshot keys no longer include Gemini runtime-file fields
+
+## Done Condition
+
+The slice is complete when:
+
+- a reader can inspect README, specs, CLI help, desktop UI, and snapshot types without seeing Gemini presented as a managed runtime-file target
+- a reader can inspect the same surfaces without encountering `Guidance` or `Guides` as canonical product nouns
+- persisted legacy manifest input still reads where explicitly supported
+- all listed verification gates pass
+
+## Execution Order
+
+1. update canonical docs and README first so the implementation change lands against the intended contract
+2. remove Gemini runtime-file exposure from the public data model and workspace contract
+3. converge CLI, Tauri bridge, desktop API, frontend types, and UI copy on the new contract
+4. add regression coverage and run gates
+
+## Self-Review Checklist
+
+- Scope bounded to runtime-file contract and naming convergence: yes
+- Product decision resolved before tasking: yes
+- Verification externally observable: yes
+- Touched surface covers docs, public types, bridge/UI naming, metadata copy, and fixtures: yes
+- Existing live executor plan preserved instead of overwritten: yes
+- Hidden blocker requiring user clarification: no

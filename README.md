@@ -3,7 +3,7 @@
 **praxis** is a GitHub-first **management plane** for external agent artifacts and persistent agent files.
 
 It is not a skill-pack repository.  
-It discovers external repositories, scans for `SKILL.md` and runtime instruction files, and applies only the selected artifacts into Codex and Claude Code runtime targets with a **copy-only**, **lock-driven**, **no-stale-leftovers** model. Gemini CLI remains an explicit integration target until its runtime-file contract is promoted.
+It discovers external repositories, scans for `SKILL.md` and runtime instruction files, and applies only the selected artifacts into Codex and Claude Code runtime targets with a **copy-only**, **lock-driven**, **no-stale-leftovers** model. Gemini-related work remains outside the current runtime-file contract until a separate adoption change is approved.
 
 The canonical documentation set lives under `specs/` and is structured as a split, Symphony-style product specification package.
 
@@ -59,7 +59,7 @@ That keeps the product simple while still giving it a strong card-deck UX.
 5. **Agent files are composed deterministically, never clobbered blindly.**
 6. **State is deterministic. Remove means remove.**
 7. **Inspect → plan → apply is the primary interaction.**
-8. **Codex and Claude Code are first-class runtime-file targets. Gemini CLI remains an integration target until promoted.**
+8. **Codex and Claude Code are the only first-class runtime-file targets in the current contract.**
 
 ## Workspace layout
 
@@ -71,13 +71,11 @@ That keeps the product simple while still giving it a strong card-deck UX.
 <repo>/.praxis/cache/
 <repo>/.agents/skills/
 <repo>/.claude/skills/
-<repo>/.gemini/skills/
 <repo>/AGENTS.md
 <repo>/AGENTS.override.md
 <repo>/AGENT.md          # optional compatibility alias
 <repo>/CLAUDE.md
 <repo>/.claude/CLAUDE.md
-<repo>/GEMINI.md      # reserved for explicit Gemini integration work
 ```
 
 ### User scope (macOS first)
@@ -88,11 +86,9 @@ That keeps the product simple while still giving it a strong card-deck UX.
 ~/Library/Application Support/Praxis/cache/
 ~/.agents/skills/
 ~/.claude/skills/
-~/.gemini/skills/
 ~/.codex/AGENTS.md
 ~/.codex/AGENTS.override.md
 ~/.claude/CLAUDE.md
-~/.gemini/GEMINI.md   # reserved for explicit Gemini integration work
 ```
 
 ## Quick start
@@ -147,3 +143,8 @@ Read in this order:
 9. `specs/07-UX-IA.md`
 10. `specs/08-DISTRIBUTION.md`
 11. `specs/99-REFERENCES.md`
+
+### AI Agent 구성 하는 스킬을 기본 값으로 입력
+
+- PM, BACKEND, FRONTEND, AI ANALYST, QA가 기본 개발팀
+- 그 외의 마케팅 부터 다양한 업무 팀을(리서치 및 벤치마킹) 구성하는 예제는 다음 페이즈에 추가.

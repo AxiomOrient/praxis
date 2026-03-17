@@ -24,7 +24,7 @@ static BEGIN_V2_RE: OnceLock<Regex> = OnceLock::new();
 static BEGIN_V1_RE: OnceLock<Regex> = OnceLock::new();
 const MARKER: &str = "praxis";
 const END_MARKER: &str = "<!-- praxis:end -->";
-const ALL_AGENT_FILE_SLOTS: [AgentFileSlot; 9] = [
+const ALL_AGENT_FILE_SLOTS: [AgentFileSlot; 7] = [
     AgentFileSlot::CodexProjectRoot,
     AgentFileSlot::CodexProjectOverride,
     AgentFileSlot::CodexUserRoot,
@@ -32,8 +32,6 @@ const ALL_AGENT_FILE_SLOTS: [AgentFileSlot; 9] = [
     AgentFileSlot::ClaudeProjectRoot,
     AgentFileSlot::ClaudeProjectDot,
     AgentFileSlot::ClaudeUserRoot,
-    AgentFileSlot::GeminiProjectRoot,
-    AgentFileSlot::GeminiUserRoot,
 ];
 
 use crate::model::{
@@ -215,18 +213,16 @@ pub fn parse_managed_blocks(content: &str) -> Vec<ManagedAgentFileBlock> {
         .collect()
 }
 
-fn parse_slot_id(s: &str) -> AgentFileSlot {
+fn parse_slot_id(s: &str) -> Option<AgentFileSlot> {
     match s {
-        "codex-user-root" => AgentFileSlot::CodexUserRoot,
-        "codex-user-override" => AgentFileSlot::CodexUserOverride,
-        "codex-project-root" => AgentFileSlot::CodexProjectRoot,
-        "codex-project-override" => AgentFileSlot::CodexProjectOverride,
-        "claude-user-root" => AgentFileSlot::ClaudeUserRoot,
-        "claude-project-root" => AgentFileSlot::ClaudeProjectRoot,
-        "claude-project-dot" => AgentFileSlot::ClaudeProjectDot,
-        "gemini-user-root" => AgentFileSlot::GeminiUserRoot,
-        "gemini-project-root" => AgentFileSlot::GeminiProjectRoot,
-        _ => AgentFileSlot::CodexProjectRoot,
+        "codex-user-root" => Some(AgentFileSlot::CodexUserRoot),
+        "codex-user-override" => Some(AgentFileSlot::CodexUserOverride),
+        "codex-project-root" => Some(AgentFileSlot::CodexProjectRoot),
+        "codex-project-override" => Some(AgentFileSlot::CodexProjectOverride),
+        "claude-user-root" => Some(AgentFileSlot::ClaudeUserRoot),
+        "claude-project-root" => Some(AgentFileSlot::ClaudeProjectRoot),
+        "claude-project-dot" => Some(AgentFileSlot::ClaudeProjectDot),
+        _ => None,
     }
 }
 
@@ -363,7 +359,7 @@ fn parse_begin_marker(line: &str) -> Option<ManagedAgentFileBlock> {
         return Some(ManagedAgentFileBlock {
             source_id: caps.name("source")?.as_str().to_string(),
             template_id: caps.name("template")?.as_str().to_string(),
-            slot: parse_slot_id(caps.name("slot")?.as_str()),
+            slot: parse_slot_id(caps.name("slot")?.as_str())?,
             content_hash: caps.name("hash")?.as_str().to_string(),
         });
     }
@@ -459,7 +455,6 @@ mod tests {
             lock_path: state_dir.join("lock.json"),
             codex_skills_dir: root.join(".agents").join("skills"),
             claude_skills_dir: root.join(".claude").join("skills"),
-            gemini_skills_dir: root.join(".gemini").join("skills"),
             codex_user_agents_path: root.join("user-codex").join("AGENTS.md"),
             codex_user_override_path: root.join("user-codex").join("AGENTS.override.md"),
             codex_project_agents_path: root.join("AGENTS.md"),
@@ -468,8 +463,6 @@ mod tests {
             claude_user_root_path: root.join("user-claude").join("CLAUDE.md"),
             claude_project_root_path: root.join("CLAUDE.md"),
             claude_project_dot_path: root.join(".claude").join("CLAUDE.md"),
-            gemini_user_root_path: root.join("user-gemini").join("GEMINI.md"),
-            gemini_project_root_path: root.join("GEMINI.md"),
         }
     }
 
@@ -498,7 +491,7 @@ mod tests {
                 slot: AgentFileSlot::ClaudeProjectRoot,
                 priority: 100,
                 content_hash: "hash".to_string(),
-                content: "root guide".to_string(),
+                content: "root agent file".to_string(),
                 target_path: root.join("CLAUDE.md"),
             }],
         )
@@ -506,7 +499,7 @@ mod tests {
 
         let written = std::fs::read_to_string(root.join("CLAUDE.md")).expect("claude file");
         assert!(written.contains("slot=claude-project-root"));
-        assert!(written.contains("root guide"));
+        assert!(written.contains("root agent file"));
     }
 
     #[test]
@@ -520,11 +513,18 @@ mod tests {
 
     #[test]
     fn parse_managed_blocks_v2_format() {
-        let content = "<!-- praxis:begin slot=gemini-project-root source=github:foo/bar template=gemini-root hash=xyz -->\ncontent\n<!-- praxis:end -->";
+        let content = "<!-- praxis:begin slot=claude-project-root source=github:foo/bar template=claude-root hash=xyz -->\ncontent\n<!-- praxis:end -->";
         let blocks = parse_managed_blocks(content);
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0].slot, AgentFileSlot::GeminiProjectRoot);
-        assert_eq!(blocks[0].template_id, "gemini-root");
+        assert_eq!(blocks[0].slot, AgentFileSlot::ClaudeProjectRoot);
+        assert_eq!(blocks[0].template_id, "claude-root");
+    }
+
+    #[test]
+    fn parse_managed_blocks_skips_unsupported_legacy_slots() {
+        let content = "<!-- praxis:begin slot=legacy-project-root source=github:foo/bar template=legacy-root hash=xyz -->\ncontent\n<!-- praxis:end -->";
+        let blocks = parse_managed_blocks(content);
+        assert!(blocks.is_empty());
     }
 
     #[test]

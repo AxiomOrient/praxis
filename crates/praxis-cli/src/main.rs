@@ -1,21 +1,21 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use praxis_core::{
-    augment_draft, benchmark_source, cancel_job, create_draft, doctor_workspace, fork_draft,
-    init_workspace, inspect_source_input, install_source, jobs_work, list_workspace, plan_install,
-    preview_draft, promote_draft, read_agent_file_state, remove_from_source, retry_job,
-    submit_human_review_action, sync_workspace, update_draft, update_workspace,
-    write_agent_file_user_content, Agent, AgentFileSlot, AgentFileWriteRequest,
-    BenchmarkRunRequest, CreateDraftRequest, DraftAugmentRequest, DraftPreviewRequest,
-    DraftUpdateRequest, ExternalExecutorConfig, ExternalExecutorKind, ForkDraftRequest,
-    HumanReviewRequest, InstallRequest, JobCancelRequest, JobRetryRequest, JobWorkRequest,
-    PromoteDraftRequest, RemoveRequest, Scope,
+    augment_draft, benchmark_source, cancel_job, create_draft, doctor_workspace,
+    doctor_workspace_with_executor, fork_draft, init_workspace, inspect_source_input,
+    install_source, jobs_work, list_workspace, plan_install, preview_draft, promote_draft,
+    read_agent_file_state, remove_from_source, retry_job, submit_human_review_action,
+    sync_workspace, update_draft, update_workspace, write_agent_file_user_content, Agent,
+    AgentFileSlot, AgentFileWriteRequest, BenchmarkRunRequest, CreateDraftRequest,
+    DraftAugmentRequest, DraftPreviewRequest, DraftUpdateRequest, ExternalExecutorConfig,
+    ExternalExecutorKind, ForkDraftRequest, HumanReviewRequest, InstallRequest, JobCancelRequest,
+    JobRetryRequest, JobWorkRequest, PromoteDraftRequest, RemoveRequest, Scope,
 };
 
 #[derive(Debug, Parser)]
 #[command(
     name = "praxis",
-    about = "GitHub-first manager for agent skills and guidance"
+    about = "GitHub-first manager for agent skills and agent files"
 )]
 struct Cli {
     #[arg(long, value_enum, default_value_t = ScopeArg::Repo)]
@@ -47,7 +47,6 @@ impl From<ScopeArg> for Scope {
 enum AgentArg {
     Codex,
     Claude,
-    Gemini,
 }
 
 impl From<AgentArg> for Agent {
@@ -55,7 +54,6 @@ impl From<AgentArg> for Agent {
         match value {
             AgentArg::Codex => Agent::Codex,
             AgentArg::Claude => Agent::Claude,
-            AgentArg::Gemini => Agent::Gemini,
         }
     }
 }
@@ -69,8 +67,6 @@ enum AgentFileSlotArg {
     ClaudeUserRoot,
     ClaudeProjectRoot,
     ClaudeProjectDot,
-    GeminiUserRoot,
-    GeminiProjectRoot,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -98,8 +94,6 @@ impl From<AgentFileSlotArg> for AgentFileSlot {
             AgentFileSlotArg::ClaudeUserRoot => AgentFileSlot::ClaudeUserRoot,
             AgentFileSlotArg::ClaudeProjectRoot => AgentFileSlot::ClaudeProjectRoot,
             AgentFileSlotArg::ClaudeProjectDot => AgentFileSlot::ClaudeProjectDot,
-            AgentFileSlotArg::GeminiUserRoot => AgentFileSlot::GeminiUserRoot,
-            AgentFileSlotArg::GeminiProjectRoot => AgentFileSlot::GeminiProjectRoot,
         }
     }
 }
@@ -154,7 +148,12 @@ enum Command {
     List,
     Sync,
     Update,
-    Doctor,
+    Doctor {
+        #[arg(long, value_enum)]
+        executor_provider: Option<ExecutorProviderArg>,
+        #[arg(long)]
+        executor_model: Option<String>,
+    },
     Benchmark {
         #[command(subcommand)]
         command: BenchmarkCommand,
@@ -167,14 +166,14 @@ enum Command {
         #[command(subcommand)]
         command: JobsCommand,
     },
-    Guidance {
+    AgentFiles {
         #[command(subcommand)]
-        command: GuidanceCommand,
+        command: AgentFilesCommand,
     },
 }
 
 #[derive(Debug, Subcommand)]
-enum GuidanceCommand {
+enum AgentFilesCommand {
     Show {
         #[arg(long, value_enum)]
         slot: Option<AgentFileSlotArg>,
@@ -342,7 +341,24 @@ fn main() -> Result<()> {
         Command::List => print_json(&list_workspace(scope, cli.root)?),
         Command::Sync => print_json(&sync_workspace(scope, cli.root)?),
         Command::Update => print_json(&update_workspace(scope, cli.root)?),
-        Command::Doctor => print_json(&doctor_workspace(scope, cli.root)?),
+        Command::Doctor {
+            executor_provider,
+            executor_model,
+        } => {
+            let executor = executor_provider.map(|provider| ExternalExecutorConfig {
+                provider: provider.into(),
+                model: executor_model,
+            });
+            if let Some(executor) = executor {
+                print_json(&doctor_workspace_with_executor(
+                    scope,
+                    cli.root,
+                    Some(executor),
+                )?)
+            } else {
+                print_json(&doctor_workspace(scope, cli.root)?)
+            }
+        }
         Command::Benchmark { command } => match command {
             BenchmarkCommand::Run {
                 suite,
@@ -463,8 +479,8 @@ fn main() -> Result<()> {
                 job_id,
             })?),
         },
-        Command::Guidance { command } => match command {
-            GuidanceCommand::Show { slot } => {
+        Command::AgentFiles { command } => match command {
+            AgentFilesCommand::Show { slot } => {
                 let snapshot = read_agent_file_state(scope, cli.root)?;
                 if let Some(slot_arg) = slot {
                     let needle: AgentFileSlot = slot_arg.into();
@@ -478,7 +494,7 @@ fn main() -> Result<()> {
                     print_json(&snapshot)
                 }
             }
-            GuidanceCommand::Set {
+            AgentFilesCommand::Set {
                 slot,
                 file,
                 content,
@@ -495,7 +511,7 @@ fn main() -> Result<()> {
                     content: next_content,
                 })?)
             }
-            GuidanceCommand::Paths => {
+            AgentFilesCommand::Paths => {
                 let snapshot = list_workspace(scope, cli.root)?;
                 print_json(&snapshot.targets)
             }

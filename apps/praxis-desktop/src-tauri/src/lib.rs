@@ -69,13 +69,13 @@ fn doctor(scope: &str, root: Option<String>) -> Result<snapshot::DoctorReport, S
 }
 
 #[tauri::command]
-fn guidance(scope: &str, root: Option<String>) -> Result<snapshot::AgentFileSnapshot, String> {
+fn agent_files(scope: &str, root: Option<String>) -> Result<snapshot::AgentFileSnapshot, String> {
     let scope = parse_scope(scope)?;
     read_agent_file_state(scope, root).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn guidance_write(payload: AgentFileWriteRequest) -> Result<snapshot::AgentFileSnapshot, String> {
+fn agent_files_write(payload: AgentFileWriteRequest) -> Result<snapshot::AgentFileSnapshot, String> {
     write_agent_file_user_content(payload).map_err(|e| e.to_string())
 }
 
@@ -155,8 +155,8 @@ pub fn run() {
             sync,
             update,
             doctor,
-            guidance,
-            guidance_write,
+            agent_files,
+            agent_files_write,
             benchmark_run,
             submit_human_review,
             create_skill_draft,
@@ -221,13 +221,11 @@ mod tests {
             targets: TargetPaths {
                 codex_skills: "/tmp/.agents/skills".to_string(),
                 claude_skills: "/tmp/.claude/skills".to_string(),
-                gemini_skills: "/tmp/.gemini/skills".to_string(),
                 codex_agents: "/tmp/AGENTS.md".to_string(),
                 codex_override: "/tmp/AGENTS.override.md".to_string(),
                 codex_agent_alias: "/tmp/AGENT.md".to_string(),
                 claude_root: "/tmp/CLAUDE.md".to_string(),
                 claude_dot: "/tmp/.claude/CLAUDE.md".to_string(),
-                gemini_project_root: "/tmp/GEMINI.md".to_string(),
             },
             library: LibraryStoreSnapshot {
                 db_path: "/tmp/.praxis/db/praxis.db".to_string(),
@@ -377,13 +375,11 @@ mod tests {
             target_paths: TargetPaths {
                 codex_skills: "/tmp/.agents/skills".to_string(),
                 claude_skills: "/tmp/.claude/skills".to_string(),
-                gemini_skills: "/tmp/.gemini/skills".to_string(),
                 codex_agents: "/tmp/AGENTS.md".to_string(),
                 codex_override: "/tmp/AGENTS.override.md".to_string(),
                 codex_agent_alias: "/tmp/AGENT.md".to_string(),
                 claude_root: "/tmp/CLAUDE.md".to_string(),
                 claude_dot: "/tmp/.claude/CLAUDE.md".to_string(),
-                gemini_project_root: "/tmp/GEMINI.md".to_string(),
             },
             skills: Vec::new(),
             bundles: Vec::new(),
@@ -403,7 +399,6 @@ mod tests {
                 total_bundles: 0,
                 codex_skills: 0,
                 claude_skills: 0,
-                gemini_skills: 0,
                 codex_bundles: 0,
                 claude_bundles: 0,
             },

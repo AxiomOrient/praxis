@@ -104,7 +104,7 @@ The decisive shift is this:
 
 > Praxis is not only a skill installer. It is the system that keeps the agent workspace legible.
 
-That means skills and agent files must be managed together, because official runtimes treat `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` as persistent instruction surfaces loaded into agent context.[R2][R6][R8]
+That means skills and agent files must be managed together, because the current supported runtimes treat `AGENTS.md` and `CLAUDE.md` as persistent instruction surfaces loaded into agent context.[R2][R6]
 
 ## Final implementation posture
 

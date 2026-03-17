@@ -704,7 +704,6 @@ mod tests {
             lock_path: state_dir.join("lock.json"),
             codex_skills_dir: root.join(".agents").join("skills"),
             claude_skills_dir: root.join(".claude").join("skills"),
-            gemini_skills_dir: root.join(".gemini").join("skills"),
             codex_user_agents_path: root.join(".codex").join("AGENTS.md"),
             codex_user_override_path: root.join(".codex").join("AGENTS.override.md"),
             codex_project_agents_path: root.join("AGENTS.md"),
@@ -713,8 +712,6 @@ mod tests {
             claude_user_root_path: root.join(".claude-home").join("CLAUDE.md"),
             claude_project_root_path: root.join("CLAUDE.md"),
             claude_project_dot_path: root.join(".claude").join("CLAUDE.md"),
-            gemini_user_root_path: root.join(".gemini-home").join("GEMINI.md"),
-            gemini_project_root_path: root.join("GEMINI.md"),
         }
     }
 

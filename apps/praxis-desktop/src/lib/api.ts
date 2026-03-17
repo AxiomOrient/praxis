@@ -56,12 +56,12 @@ export async function doctor(scope: Scope, root?: string | null): Promise<Doctor
   return invoke("doctor", { scope, root: root ?? null });
 }
 
-export async function guidance(scope: Scope, root?: string | null): Promise<AgentFileSnapshot> {
-  return invoke("guidance", { scope, root: root ?? null });
+export async function agentFiles(scope: Scope, root?: string | null): Promise<AgentFileSnapshot> {
+  return invoke("agent_files", { scope, root: root ?? null });
 }
 
-export async function guidanceWrite(payload: AgentFileWritePayload): Promise<AgentFileSnapshot> {
-  return invoke("guidance_write", { payload });
+export async function agentFilesWrite(payload: AgentFileWritePayload): Promise<AgentFileSnapshot> {
+  return invoke("agent_files_write", { payload });
 }
 
 export async function benchmarkRun(payload: BenchmarkRunPayload): Promise<BenchmarkRunSummary> {

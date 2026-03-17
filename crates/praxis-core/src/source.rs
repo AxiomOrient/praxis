@@ -433,8 +433,8 @@ fn discover_agent_file_templates(root: &Path) -> Result<Vec<AgentFileTemplate>> 
     if codex_override.is_file() {
         templates.push(AgentFileTemplate {
             id: "codex-project-override".to_string(),
-            title: "Codex override guide".to_string(),
-            description: "Higher-priority Codex project guidance.".to_string(),
+            title: "Codex override agent file".to_string(),
+            description: "Higher-priority Codex project agent file content.".to_string(),
             relative_path: "AGENTS.override.md".to_string(),
             slots: vec![AgentFileSlot::CodexProjectOverride],
             priority: DEFAULT_DISCOVERED_TEMPLATE_PRIORITY,
@@ -451,8 +451,8 @@ fn discover_agent_file_templates(root: &Path) -> Result<Vec<AgentFileTemplate>> 
                 .replace('\\', "/");
             templates.push(AgentFileTemplate {
                 id: "codex-project-root".to_string(),
-                title: "Codex guide".to_string(),
-                description: "Base AGENTS guidance for Codex.".to_string(),
+                title: "Codex root agent file".to_string(),
+                description: "Base AGENTS.md agent file content for Codex.".to_string(),
                 relative_path: rel,
                 slots: vec![AgentFileSlot::CodexProjectRoot],
                 priority: DEFAULT_DISCOVERED_TEMPLATE_PRIORITY,
@@ -466,8 +466,8 @@ fn discover_agent_file_templates(root: &Path) -> Result<Vec<AgentFileTemplate>> 
     if claude_root.is_file() {
         templates.push(AgentFileTemplate {
             id: "claude-project-root".to_string(),
-            title: "Claude root guide".to_string(),
-            description: "Project Claude guidance at repository root.".to_string(),
+            title: "Claude root agent file".to_string(),
+            description: "Project Claude agent file content at repository root.".to_string(),
             relative_path: "CLAUDE.md".to_string(),
             slots: vec![AgentFileSlot::ClaudeProjectRoot],
             priority: DEFAULT_DISCOVERED_TEMPLATE_PRIORITY,
@@ -479,23 +479,10 @@ fn discover_agent_file_templates(root: &Path) -> Result<Vec<AgentFileTemplate>> 
     if claude_dot.is_file() {
         templates.push(AgentFileTemplate {
             id: "claude-project-dot".to_string(),
-            title: "Claude dot-guide".to_string(),
-            description: "Project Claude guidance under .claude/.".to_string(),
+            title: "Claude project agent file".to_string(),
+            description: "Project Claude agent file content under .claude/.".to_string(),
             relative_path: ".claude/CLAUDE.md".to_string(),
             slots: vec![AgentFileSlot::ClaudeProjectDot],
-            priority: DEFAULT_DISCOVERED_TEMPLATE_PRIORITY,
-            origin: AgentFileTemplateOrigin::Discovered,
-        });
-    }
-
-    let gemini_root = root.join("GEMINI.md");
-    if gemini_root.is_file() {
-        templates.push(AgentFileTemplate {
-            id: "gemini-project-root".to_string(),
-            title: "Gemini project guide".to_string(),
-            description: "Project Gemini CLI guidance.".to_string(),
-            relative_path: "GEMINI.md".to_string(),
-            slots: vec![AgentFileSlot::GeminiProjectRoot],
             priority: DEFAULT_DISCOVERED_TEMPLATE_PRIORITY,
             origin: AgentFileTemplateOrigin::Discovered,
         });

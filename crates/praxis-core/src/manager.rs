@@ -14,6 +14,7 @@ use crate::evaluation::{
     attach_job_to_benchmark_run, queue_benchmark_run, read_benchmark_run, read_evaluation_snapshot,
     run_benchmark as persist_benchmark_run,
 };
+use crate::executor::doctor_executor;
 use crate::jobs::{
     cancel_job as persist_cancel_job, enqueue_ai_benchmark_job, enqueue_augment_draft_job,
     enqueue_human_review_job, read_job_snapshot, retry_job as persist_retry_job,
@@ -23,11 +24,12 @@ use crate::library::{read_library_store_snapshot, sync_catalog_to_library};
 use crate::model::{
     Agent, AgentFileTemplate, AppliedAgentFileAction, AppliedBundle, AppliedInstall, AppliedSkill,
     BenchmarkRunRequest, BenchmarkRunSummary, CreateDraftRequest, DoctorCheck, DoctorReport,
-    DraftAugmentRequest, DraftPreview, DraftPreviewRequest, DraftUpdateRequest, ForkDraftRequest,
-    HumanReviewRequest, InstallPlan, InstallRequest, JobCancelRequest, JobRetryRequest,
-    JobSnapshot, JobWorkRequest, PlanSummary, PlannedAgentFileAction, PlannedBundle, PlannedSkill,
-    PromoteDraftRequest, RemoveRequest, Scope, SkillInfo, SourceCatalog, SourceInstall, SourceRef,
-    TargetProfile, WorkspaceLock, WorkspaceManifest, WorkspaceSnapshot,
+    DraftAugmentRequest, DraftPreview, DraftPreviewRequest, DraftUpdateRequest,
+    ExternalExecutorConfig, ForkDraftRequest, HumanReviewRequest, InstallPlan, InstallRequest,
+    JobCancelRequest, JobRetryRequest, JobSnapshot, JobWorkRequest, PlanSummary,
+    PlannedAgentFileAction, PlannedBundle, PlannedSkill, PromoteDraftRequest, RemoveRequest, Scope,
+    SkillInfo, SourceCatalog, SourceInstall, SourceRef, TargetProfile, WorkspaceLock,
+    WorkspaceManifest, WorkspaceSnapshot,
 };
 use crate::parser::{canonical_source_id, parse_source_input};
 use crate::source::{hash_directory, scan_source, should_skip_dir, source_cache_key};
@@ -392,6 +394,14 @@ pub fn retry_job(req: JobRetryRequest) -> Result<JobSnapshot> {
 }
 
 pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorReport> {
+    doctor_workspace_with_executor(scope, root, None)
+}
+
+pub fn doctor_workspace_with_executor(
+    scope: Scope,
+    root: Option<String>,
+    executor: Option<ExternalExecutorConfig>,
+) -> Result<DoctorReport> {
     let paths = resolve_workspace_paths(scope, root)?;
     ensure_workspace(&paths)?;
 
@@ -542,6 +552,10 @@ pub fn doctor_workspace(scope: Scope, root: Option<String>) -> Result<DoctorRepo
                 });
             }
         }
+    }
+
+    if let Some(executor) = executor.as_ref() {
+        checks.extend(doctor_executor(executor));
     }
 
     if checks.is_empty() {
@@ -823,10 +837,6 @@ fn build_install_plan(
             .iter()
             .filter(|skill| skill.agent == Agent::Claude)
             .count(),
-        gemini_skills: skills
-            .iter()
-            .filter(|skill| skill.agent == Agent::Gemini)
-            .count(),
         codex_bundles: bundles
             .iter()
             .filter(|bundle| bundle.agent == Agent::Codex)
@@ -866,20 +876,7 @@ fn normalize_targets(targets: Vec<Agent>, manifest: &WorkspaceManifest) -> Resul
     Ok(normalized)
 }
 
-fn validate_runtime_file_targets(profile: &TargetProfile, targets: &[Agent]) -> Result<()> {
-    if profile.references_gemini_runtime_targets() {
-        bail!(
-            "target profile '{}' references Gemini runtime-file targets, but Gemini remains an integration target until promoted",
-            profile.as_str()
-        );
-    }
-
-    if targets.iter().any(|target| *target == Agent::Gemini) {
-        bail!(
-            "Gemini runtime-file targets are not supported yet; Gemini remains an integration target until promoted"
-        );
-    }
-
+fn validate_runtime_file_targets(_profile: &TargetProfile, _targets: &[Agent]) -> Result<()> {
     Ok(())
 }
 
@@ -968,7 +965,6 @@ fn agent_skill_root(paths: &WorkspacePaths, agent: &Agent) -> PathBuf {
     match agent {
         Agent::Codex => paths.codex_skills_dir.clone(),
         Agent::Claude => paths.claude_skills_dir.clone(),
-        Agent::Gemini => paths.gemini_skills_dir.clone(),
     }
 }
 
@@ -1575,29 +1571,17 @@ mod tests {
     }
 
     #[test]
-    fn normalize_targets_rejects_explicit_gemini_runtime_target() {
-        let manifest = WorkspaceManifest::default();
-
-        let err = normalize_targets(vec![Agent::Gemini], &manifest).expect_err("gemini rejected");
-        assert!(err
-            .to_string()
-            .contains("Gemini runtime-file targets are not supported yet"));
-    }
-
-    #[test]
-    fn normalize_targets_rejects_profile_that_references_gemini_runtime_targets() {
+    fn normalize_targets_accepts_supported_target_profiles_only() {
         let manifest = WorkspaceManifest {
             version: 1,
             settings: crate::model::WorkspaceSettings {
-                target_profile: TargetProfile::GeminiNative,
+                target_profile: TargetProfile::MultiRuntimeDefault,
                 write_codex_agent_alias: true,
             },
             installs: Vec::new(),
         };
 
-        let err = normalize_targets(Vec::new(), &manifest).expect_err("profile rejected");
-        assert!(err
-            .to_string()
-            .contains("references Gemini runtime-file targets"));
+        let targets = normalize_targets(Vec::new(), &manifest).expect("targets");
+        assert_eq!(targets, vec![Agent::Claude, Agent::Codex]);
     }
 }

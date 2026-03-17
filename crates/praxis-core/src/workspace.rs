@@ -28,7 +28,6 @@ pub struct WorkspacePaths {
     // Skill roots
     pub codex_skills_dir: PathBuf,
     pub claude_skills_dir: PathBuf,
-    pub gemini_skills_dir: PathBuf,
     // Codex agent file paths
     pub codex_user_agents_path: PathBuf,
     pub codex_user_override_path: PathBuf,
@@ -39,9 +38,6 @@ pub struct WorkspacePaths {
     pub claude_user_root_path: PathBuf,
     pub claude_project_root_path: PathBuf,
     pub claude_project_dot_path: PathBuf,
-    // Gemini agent file paths
-    pub gemini_user_root_path: PathBuf,
-    pub gemini_project_root_path: PathBuf,
 }
 
 pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<WorkspacePaths> {
@@ -77,7 +73,6 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
                 state_dir,
                 codex_skills_dir: repo_root.join(".agents").join("skills"),
                 claude_skills_dir: repo_root.join(".claude").join("skills"),
-                gemini_skills_dir: repo_root.join(".gemini").join("skills"),
                 codex_user_agents_path: codex_home.join("AGENTS.md"),
                 codex_user_override_path: codex_home.join("AGENTS.override.md"),
                 codex_project_agents_path: repo_root.join("AGENTS.md"),
@@ -86,8 +81,6 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
                 claude_user_root_path: home.join(".claude").join("CLAUDE.md"),
                 claude_project_root_path: repo_root.join("CLAUDE.md"),
                 claude_project_dot_path: repo_root.join(".claude").join("CLAUDE.md"),
-                gemini_user_root_path: home.join(".gemini").join("GEMINI.md"),
-                gemini_project_root_path: repo_root.join("GEMINI.md"),
             })
         }
         Scope::User => {
@@ -115,7 +108,6 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
                 state_dir,
                 codex_skills_dir: home.join(".agents").join("skills"),
                 claude_skills_dir: home.join(".claude").join("skills"),
-                gemini_skills_dir: home.join(".gemini").join("skills"),
                 codex_user_agents_path: codex_home.join("AGENTS.md"),
                 codex_user_override_path: codex_home.join("AGENTS.override.md"),
                 // User scope: project slots fall back to user slot paths
@@ -125,8 +117,6 @@ pub fn resolve_workspace_paths(scope: Scope, root: Option<String>) -> Result<Wor
                 claude_user_root_path: home.join(".claude").join("CLAUDE.md"),
                 claude_project_root_path: home.join(".claude").join("CLAUDE.md"),
                 claude_project_dot_path: home.join(".claude").join("CLAUDE.md"),
-                gemini_user_root_path: home.join(".gemini").join("GEMINI.md"),
-                gemini_project_root_path: home.join(".gemini").join("GEMINI.md"),
             })
         }
     }
@@ -146,7 +136,6 @@ pub fn ensure_workspace(paths: &WorkspacePaths) -> Result<()> {
     fs::create_dir_all(&paths.cache_dir)?;
     fs::create_dir_all(&paths.codex_skills_dir)?;
     fs::create_dir_all(&paths.claude_skills_dir)?;
-    fs::create_dir_all(&paths.gemini_skills_dir)?;
 
     for path in [
         &paths.codex_project_agents_path,
@@ -154,7 +143,6 @@ pub fn ensure_workspace(paths: &WorkspacePaths) -> Result<()> {
         &paths.codex_agent_alias_path,
         &paths.claude_project_root_path,
         &paths.claude_project_dot_path,
-        &paths.gemini_project_root_path,
     ] {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -217,8 +205,6 @@ pub fn agent_file_slot_path(paths: &WorkspacePaths, slot: &AgentFileSlot) -> Pat
         AgentFileSlot::ClaudeUserRoot => paths.claude_user_root_path.clone(),
         AgentFileSlot::ClaudeProjectRoot => paths.claude_project_root_path.clone(),
         AgentFileSlot::ClaudeProjectDot => paths.claude_project_dot_path.clone(),
-        AgentFileSlot::GeminiUserRoot => paths.gemini_user_root_path.clone(),
-        AgentFileSlot::GeminiProjectRoot => paths.gemini_project_root_path.clone(),
     }
 }
 
@@ -226,7 +212,6 @@ pub fn target_paths(paths: &WorkspacePaths, _settings: &WorkspaceSettings) -> Ta
     TargetPaths {
         codex_skills: paths.codex_skills_dir.to_string_lossy().to_string(),
         claude_skills: paths.claude_skills_dir.to_string_lossy().to_string(),
-        gemini_skills: paths.gemini_skills_dir.to_string_lossy().to_string(),
         codex_agents: paths
             .codex_project_agents_path
             .to_string_lossy()
@@ -238,7 +223,6 @@ pub fn target_paths(paths: &WorkspacePaths, _settings: &WorkspaceSettings) -> Ta
         codex_agent_alias: paths.codex_agent_alias_path.to_string_lossy().to_string(),
         claude_root: paths.claude_project_root_path.to_string_lossy().to_string(),
         claude_dot: paths.claude_project_dot_path.to_string_lossy().to_string(),
-        gemini_project_root: paths.gemini_project_root_path.to_string_lossy().to_string(),
     }
 }
 
@@ -272,7 +256,6 @@ mod tests {
             lock_path: repo_root.join(".praxis").join("lock.json"),
             codex_skills_dir: repo_root.join(".agents").join("skills"),
             claude_skills_dir: repo_root.join(".claude").join("skills"),
-            gemini_skills_dir: repo_root.join(".gemini").join("skills"),
             codex_user_agents_path: home.join(".codex").join("AGENTS.md"),
             codex_user_override_path: home.join(".codex").join("AGENTS.override.md"),
             codex_project_agents_path: repo_root.join("AGENTS.md"),
@@ -281,22 +264,20 @@ mod tests {
             claude_user_root_path: home.join(".claude").join("CLAUDE.md"),
             claude_project_root_path: repo_root.join("CLAUDE.md"),
             claude_project_dot_path: repo_root.join(".claude").join("CLAUDE.md"),
-            gemini_user_root_path: home.join(".gemini").join("GEMINI.md"),
-            gemini_project_root_path: repo_root.join("GEMINI.md"),
         }
     }
 
     #[test]
-    fn agent_file_slot_path_resolves_gemini_slots() {
+    fn agent_file_slot_path_resolves_supported_slots() {
         let paths = sample_paths();
 
         assert_eq!(
-            agent_file_slot_path(&paths, &AgentFileSlot::GeminiUserRoot),
-            PathBuf::from("/tmp/home/.gemini/GEMINI.md")
+            agent_file_slot_path(&paths, &AgentFileSlot::CodexUserRoot),
+            PathBuf::from("/tmp/home/.codex/AGENTS.md")
         );
         assert_eq!(
-            agent_file_slot_path(&paths, &AgentFileSlot::GeminiProjectRoot),
-            PathBuf::from("/tmp/praxis/GEMINI.md")
+            agent_file_slot_path(&paths, &AgentFileSlot::ClaudeProjectDot),
+            PathBuf::from("/tmp/praxis/.claude/CLAUDE.md")
         );
     }
 
@@ -326,7 +307,6 @@ mod tests {
             lock_path: state_dir.join("lock.json"),
             codex_skills_dir: repo_root.join(".agents").join("skills"),
             claude_skills_dir: repo_root.join(".claude").join("skills"),
-            gemini_skills_dir: repo_root.join(".gemini").join("skills"),
             codex_user_agents_path: repo_root.join(".codex").join("AGENTS.md"),
             codex_user_override_path: repo_root.join(".codex").join("AGENTS.override.md"),
             codex_project_agents_path: repo_root.join("AGENTS.md"),
@@ -335,15 +315,12 @@ mod tests {
             claude_user_root_path: repo_root.join(".claude-home").join("CLAUDE.md"),
             claude_project_root_path: repo_root.join("CLAUDE.md"),
             claude_project_dot_path: repo_root.join(".claude").join("CLAUDE.md"),
-            gemini_user_root_path: repo_root.join(".gemini-home").join("GEMINI.md"),
-            gemini_project_root_path: repo_root.join("GEMINI.md"),
         };
 
         ensure_workspace(&paths).expect("ensure workspace");
 
         assert!(paths.codex_skills_dir.is_dir());
         assert!(paths.claude_skills_dir.is_dir());
-        assert!(paths.gemini_skills_dir.is_dir());
         assert!(paths.jobs_dir.is_dir());
         assert!(paths.db_dir.is_dir());
         assert!(paths.library_imports_dir.is_dir());

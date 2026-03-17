@@ -1,10 +1,8 @@
-export type Agent = "codex" | "claude" | "gemini";
+export type Agent = "codex" | "claude";
 export type Scope = "repo" | "user";
 export type TargetProfile =
   | "codex-open-standard"
   | "claude-native"
-  | "gemini-native"
-  | "codex-gemini-shared-open-standard"
   | "multi-runtime-default";
 export type ExternalExecutorKind = "disabled" | "codex-runtime";
 export type AgentFileSlot =
@@ -14,9 +12,7 @@ export type AgentFileSlot =
   | "codex-project-override"
   | "claude-user-root"
   | "claude-project-root"
-  | "claude-project-dot"
-  | "gemini-user-root"
-  | "gemini-project-root";
+  | "claude-project-dot";
 export type AgentFileTemplateOrigin = "declared" | "discovered" | "recipe" | "draft";
 export type SourceRef =
   | {
@@ -155,13 +151,11 @@ export interface WorkspaceSnapshot {
   targets: {
     codex_skills: string;
     claude_skills: string;
-    gemini_skills: string;
     codex_agents: string;
     codex_override: string;
     codex_agent_alias: string;
     claude_root: string;
     claude_dot: string;
-    gemini_project_root: string;
   };
   library: {
     db_path: string;
@@ -348,7 +342,6 @@ export interface PlanSummary {
   total_bundles: number;
   codex_skills: number;
   claude_skills: number;
-  gemini_skills: number;
   codex_bundles: number;
   claude_bundles: number;
 }

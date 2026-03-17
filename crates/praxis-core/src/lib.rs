@@ -19,10 +19,10 @@ pub use evaluation::{
 pub use jobs::{ensure_jobs_store, read_job_snapshot};
 pub use library::{ensure_library_store, read_library_store_snapshot, sync_catalog_to_library};
 pub use manager::{
-    augment_draft, benchmark_source, cancel_job, create_draft, doctor_workspace, fork_draft,
-    init_workspace, inspect_source_input, install_source, jobs_work, list_workspace, plan_install,
-    preview_draft, promote_draft, remove_from_source, retry_job,
-    submit_human_review as submit_human_review_action, sync_workspace, update_draft,
-    update_workspace,
+    augment_draft, benchmark_source, cancel_job, create_draft, doctor_workspace,
+    doctor_workspace_with_executor, fork_draft, init_workspace, inspect_source_input,
+    install_source, jobs_work, list_workspace, plan_install, preview_draft, promote_draft,
+    remove_from_source, retry_job, submit_human_review as submit_human_review_action,
+    sync_workspace, update_draft, update_workspace,
 };
 pub use model::*;
